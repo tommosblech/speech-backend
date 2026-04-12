@@ -41,18 +41,21 @@ Regeln:
     "Content-Type": "application/json"
   },
   body: JSON.stringify({
-    session: {
-      type: "realtime",
-      model: "gpt-realtime",
-      instructions: instruction,
-      audio: {
-        output: {
-          voice: "marin"
-        }
+  session: {
+    type: "realtime",
+    model: "gpt-realtime",
+    instructions: instruction,
+    audio: {
+      input: {
+        format: "pcm16"
+      },
+      output: {
+        format: "pcm16",
+        voice: "marin"
       }
     }
-  })
-});
+  }
+})
 
     const data = await response.json();
 

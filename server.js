@@ -85,14 +85,20 @@ AUSDRÜCKLICH VERBOTEN:
             instructions: instruction,
             audio: {
               input: {
-                format: "pcm16",
+                format: {
+                  type: "audio/pcm",
+                  rate: 24000
+                }
               },
               output: {
-                format: "pcm16",
-                voice: voicePreference,
-              },
-            },
-          },
+                format: {
+                  type: "audio/pcm",
+                  rate: 24000
+                },
+                voice: voicePreference
+              }
+            }
+          }
         }),
       }
     );

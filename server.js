@@ -34,18 +34,25 @@ Regeln:
 - keine Meta-Kommentare
 `;
 
-    const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-realtime",
-        modalities: ["audio"],
-        instructions: instruction
-      })
-    });
+  const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    session: {
+      type: "realtime",
+      model: "gpt-realtime",
+      instructions: instruction,
+      audio: {
+        output: {
+          voice: "marin"
+        }
+      }
+    }
+  })
+});
 
     const data = await response.json();
 

@@ -78,31 +78,29 @@ AUSDRÜCKLICH VERBOTEN:
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          session: {
-            type: "realtime",
-            model: "gpt-realtime",
-            instructions: instruction,
-            audio: {
-              input: {
-                format: {
-                  type: "audio/pcm",
-                  rate: 24000
-                }
-              },
-              output: {
-                format: {
-                  type: "audio/pcm",
-                  rate: 24000
-                },
-                voice: voicePreference
-              }
-            }
-          }
-        }),
+       body: JSON.stringify({
+  session: {
+    type: "realtime",
+    model: "gpt-realtime",
+    instructions: instruction,
+    turn_detection: {
+      type: "semantic_vad",
+      eagerness: "low",
+      create_response: true,
+      interrupt_response: false,
+    },
+    audio: {
+      output: {
+        format: {
+          type: "audio/pcm",
+          rate: 24000
+        },
+        voice: voicePreference,
+        speed: 1.0,
       }
-    );
-
+    }
+  }
+}),
     const data = await response.json();
     console.log("OpenAI Antwort:", JSON.stringify(data, null, 2));
 

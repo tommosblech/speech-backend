@@ -3,7 +3,6 @@ const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -14,14 +13,10 @@ app.get("/", (req, res) => {
 app.post("/api/realtime/session", async (req, res) => {
   try {
     const { persona, scenario, phase } = req.body || {};
-
     const personaName = persona?.name || "Thomas";
     const personaRole = persona?.role || "Mitarbeitender";
-    const personaStyle =
-      persona?.style || "sachlich, leicht kritisch, zurückhaltend";
-    const personaBehavior =
-      persona?.behavior ||
-      "antwortet knapp, hinterfragt Aussagen, fordert Klarheit";
+    const personaStyle = persona?.style || "sachlich, leicht kritisch, zurückhaltend";
+    const personaBehavior = persona?.behavior || "antwortet knapp, hinterfragt Aussagen, fordert Klarheit";
     const voicePreference = persona?.voicePreference || "echo";
 
     const instruction = `
@@ -78,29 +73,32 @@ AUSDRÜCKLICH VERBOTEN:
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json",
         },
-       body: JSON.stringify({
-  session: {
-    type: "realtime",
-    model: "gpt-realtime",
-    instructions: instruction,
-    turn_detection: {
-      type: "semantic_vad",
-      eagerness: "low",
-      create_response: true,
-      interrupt_response: false,
-    },
-    audio: {
-      output: {
-        format: {
-          type: "audio/pcm",
-          rate: 24000
-        },
-        voice: voicePreference,
-        speed: 1.0,
+        body: JSON.stringify({
+          session: {
+            type: "realtime",
+            model: "gpt-realtime",
+            instructions: instruction,
+            turn_detection: {
+              type: "semantic_vad",
+              eagerness: "low",
+              create_response: true,
+              interrupt_response: false,
+            },
+            audio: {
+              output: {
+                format: {
+                  type: "audio/pcm",
+                  rate: 24000,
+                },
+                voice: voicePreference,
+                speed: 1.0,
+              },
+            },
+          },
+        }),
       }
-    }
-  }
-}),
+    );
+
     const data = await response.json();
     console.log("OpenAI Antwort:", JSON.stringify(data, null, 2));
 
@@ -119,7 +117,6 @@ AUSDRÜCKLICH VERBOTEN:
 });
 
 const PORT = process.env.PORT || 10000;
-
 app.listen(PORT, () => {
   console.log(`Backend läuft auf Port ${PORT}`);
 });

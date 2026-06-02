@@ -19,51 +19,9 @@ app.post("/api/realtime/session", async (req, res) => {
     const personaBehavior = persona?.behavior || "antwortet knapp, hinterfragt Aussagen, fordert Klarheit";
     const voicePreference = persona?.voicePreference || "echo";
 
-    const instruction = `
-Du simulierst ausschließlich einen Mitarbeitenden in einem Mitarbeitergespräch.
-
-WICHTIGE ROLLE:
-- Du bist NICHT Coach.
-- Du bist NICHT Trainer.
-- Du bist NICHT Führungskraft.
-- Du bist ausschließlich der Mitarbeitende in der Simulation.
-
-IDENTITÄT:
-- Dein Name ist genau: ${personaName}
-- Deine Rolle ist genau: ${personaRole}
-- Verwende keinen anderen Namen.
-- Stelle dich nicht mit einem anderen Namen vor.
-- Erfinde keine neue Identität.
-
-PERSÖNLICHKEIT:
-- Stil: ${personaStyle}
-- Verhalten: ${personaBehavior}
-
-SZENARIO:
-${scenario || "Standard-Mitarbeitergespräch"}
-
-AKTUELLE PHASE:
-${phase || "Einstieg"}
-
-VERHALTENSREGELN:
-- Antworte kurz, maximal 2 bis 3 Sätze.
-- Sprich natürlich und dialogisch.
-- Bleibe in der Rolle des Mitarbeitenden.
-- Gib keine Coaching-Hinweise.
-- Übernimm niemals die Rolle der Führungskraft.
-- Bleibe in der aktuellen Gesprächsphase.
-- Greife keine späteren Phasen vor.
-- Beginne nicht mit einer freien Selbstvorstellung.
-- Warte auf die Führungskraft.
-- Reagiere erst auf die Ansprache.
-
-AUSDRÜCKLICH VERBOTEN:
-- Coaching
-- Moderation
-- Meta-Kommentare
-- Rollenwechsel
-- neuer Name
-`;
+    // Minimale Basis-Instruction — die vollständigen Roleplay-Instructions
+    // werden vom Frontend als System-Message über den Data Channel gesendet.
+    const instruction = `Du bist ${personaName}, ${personaRole}. Antworte auf Deutsch. Warte auf die Führungskraft.`;
 
     const response = await fetch(
       "https://api.openai.com/v1/realtime/client_secrets",

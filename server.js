@@ -79,6 +79,12 @@ AUSDRÜCKLICH VERBOTEN:
             model: "gpt-realtime-2",
             instructions: instruction,
             audio: {
+              input: {
+                transcription: {
+                  model: "whisper-1",
+                  language: "de",
+                },
+              },
               output: {
                 voice: voicePreference || "marin",
               },

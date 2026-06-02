@@ -66,7 +66,7 @@ AUSDRÜCKLICH VERBOTEN:
 `;
 
     const response = await fetch(
-      "https://api.openai.com/v1/realtime/client_secrets",
+      "https://api.openai.com/v1/realtime/sessions",
       {
         method: "POST",
         headers: {
@@ -74,16 +74,9 @@ AUSDRÜCKLICH VERBOTEN:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          session: {
-            type: "realtime",
-            model: "gpt-realtime",
-            instructions: instruction,
-            audio: {
-              output: {
-                voice: voicePreference,
-              },
-            },
-          },
+          model: "gpt-4o-realtime-preview-2024-12-17",
+          instructions: instruction,
+          voice: voicePreference,
         }),
       }
     );

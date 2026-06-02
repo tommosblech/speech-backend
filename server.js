@@ -47,12 +47,6 @@ app.post("/api/realtime/session", async (req, res) => {
                 voice: voicePreference || "marin",
               },
             },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.8,
-              silence_duration_ms: 1500,
-              interrupt_response: false,
-            },
           },
         }),
       }

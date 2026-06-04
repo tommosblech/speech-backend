@@ -53,7 +53,8 @@ app.post("/api/realtime/session", async (req, res) => {
     );
 
     const data = await response.json();
-    console.log("OpenAI Antwort:", JSON.stringify(data, null, 2));
+    // Nur Status loggen — niemals das vollständige Response-Objekt (enthält ephemeral key)
+    console.log("OpenAI Session-Status:", response.status, data?.error?.message ?? "OK");
 
     if (!response.ok) {
       return res.status(response.status).json({

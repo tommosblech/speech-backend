@@ -14,6 +14,7 @@ app.set("trust proxy", 1);
 const ALLOWED_ORIGINS = [
   "https://mitarbeitergespraeche.lovable.app", // Haupt-App
   "https://marcsgespraeche.lovable.app",       // Hasselmeyer-Clone
+  "https://1a489d36-b0ef-4cac-bb08-986b18013a14.lovableproject.com", // Lovable-Vorschau Haupt-App
 ];
 
 app.use(

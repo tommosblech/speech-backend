@@ -11,18 +11,25 @@ app.set("trust proxy", 1);
 // 1. ORIGIN-SCHUTZ (Hauptschutz)
 // Nur diese Domains dürfen das Backend aufrufen.
 // ============================================================
-const ALLOWED_ORIGINS = [
-  "https://mitarbeitergespraeche.lovable.app", // Haupt-App
-  "https://marcsgespraeche.lovable.app",       // Hasselmeyer-Clone
-  "https://1a489d36-b0ef-4cac-bb08-986b18013a14.lovableproject.com", // Lovable-Vorschau Haupt-App
-  "https://hhaus.lovable.app", // Heinrich-Haus-Clone
-  "https://6794593d-1117-434b-bc8b-f3d6b42e4bd6.lovableproject.com", // Lovable-Vorschau Heinrich-Haus
-];
+// Statt einer festen Liste: jede Sub-/Kundendomain unter lovable.app bzw.
+// lovableproject.com ist erlaubt. So muss bei jedem neuen Kunden-Clone
+// nichts mehr manuell ergänzt werden.
+const ALLOWED_ORIGIN_SUFFIXES = [".lovable.app", ".lovableproject.com"];
+
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return protocol === "https:" && ALLOWED_ORIGIN_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
+  } catch {
+    return false;
+  }
+}
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      if (!origin || isAllowedOrigin(origin)) {
         return callback(null, true);
       }
       return callback(new Error("Origin nicht erlaubt"));
@@ -107,7 +114,7 @@ app.post("/api/realtime/session", async (req, res) => {
   // Session-Endpoint NUR für Browser-Anfragen mit erlaubtem Origin.
   // curl/Skripte ohne Origin-Header werden hier abgewiesen.
   const origin = req.headers.origin;
-  if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+  if (!isAllowedOrigin(origin)) {
     console.warn("Abgewiesen – ungültiger Origin:", origin ?? "(keiner)");
     return res.status(403).json({ error: "Zugriff nicht erlaubt" });
   }

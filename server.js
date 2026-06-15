@@ -15,6 +15,8 @@ const ALLOWED_ORIGINS = [
   "https://mitarbeitergespraeche.lovable.app", // Haupt-App
   "https://marcsgespraeche.lovable.app",       // Hasselmeyer-Clone
   "https://1a489d36-b0ef-4cac-bb08-986b18013a14.lovableproject.com", // Lovable-Vorschau Haupt-App
+  "https://hhaus.lovable.app", // Heinrich-Haus-Clone
+  "https://6794593d-1117-434b-bc8b-f3d6b42e4bd6.lovableproject.com", // Lovable-Vorschau Heinrich-Haus
 ];
 
 app.use(

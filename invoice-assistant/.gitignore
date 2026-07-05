@@ -1,0 +1,6 @@
+# Lokale Daten: Rechnungen, Datenbank, Token-Cache – niemals einchecken
+data/
+config.json
+__pycache__/
+*.pyc
+.venv/

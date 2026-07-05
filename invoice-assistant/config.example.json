@@ -1,0 +1,16 @@
+{
+  "client_id": "HIER-DIE-AZURE-APP-CLIENT-ID",
+  "tenant": "consumers",
+  "data_dir": "data",
+  "categories": [
+    "Elektroladen",
+    "KI-Tools",
+    "Software/Abos",
+    "Hosting/Cloud",
+    "Büromaterial",
+    "Telekommunikation",
+    "Reisekosten",
+    "Fortbildung",
+    "Sonstiges"
+  ]
+}

@@ -47,17 +47,48 @@ class OutlookClient:
 
     # ---------- Anmeldung ----------
 
-    def authenticate(self) -> str:
-        """Meldet den Nutzer an und liefert dessen Kontonamen zurück."""
+    def _build_app(self) -> tuple[msal.PublicClientApplication, msal.SerializableTokenCache]:
         cache = msal.SerializableTokenCache()
         if self.config.token_cache_path.exists():
             cache.deserialize(self.config.token_cache_path.read_text(encoding="utf-8"))
-
         app = msal.PublicClientApplication(
             self.config.client_id,
             authority=f"https://login.microsoftonline.com/{self.config.tenant}",
             token_cache=cache,
         )
+        return app, cache
+
+    def _finish_auth(self, result: dict, cache: msal.SerializableTokenCache) -> str:
+        if "access_token" not in result:
+            raise RuntimeError(
+                f"Anmeldung fehlgeschlagen: {result.get('error_description', result)}"
+            )
+        if cache.has_state_changed:
+            self.config.token_cache_path.write_text(cache.serialize(), encoding="utf-8")
+            self.config.token_cache_path.chmod(0o600)
+        self._token = result["access_token"]
+        me = self._get(f"{GRAPH}/me")
+        return me.get("userPrincipalName") or me.get("displayName", "unbekannt")
+
+    def try_silent(self) -> str | None:
+        """Versucht eine Anmeldung aus dem Token-Cache, ohne den Nutzer zu fragen."""
+        app, cache = self._build_app()
+        accounts = app.get_accounts()
+        if not accounts:
+            return None
+        result = app.acquire_token_silent(SCOPES, account=accounts[0])
+        if not result or "access_token" not in result:
+            return None
+        return self._finish_auth(result, cache)
+
+    def authenticate(self, device_code_callback=None) -> str:
+        """Meldet den Nutzer an und liefert dessen Kontonamen zurück.
+
+        device_code_callback erhält das msal-Flow-Dict (user_code,
+        verification_uri, message), damit eine Oberfläche den Code anzeigen
+        kann; ohne Callback wird er auf der Konsole ausgegeben.
+        """
+        app, cache = self._build_app()
 
         result = None
         accounts = app.get_accounts()
@@ -68,21 +99,13 @@ class OutlookClient:
             flow = app.initiate_device_flow(scopes=SCOPES)
             if "user_code" not in flow:
                 raise RuntimeError(f"Device-Flow fehlgeschlagen: {flow}")
-            print(f"\n>>> {flow['message']}\n")
+            if device_code_callback:
+                device_code_callback(flow)
+            else:
+                print(f"\n>>> {flow['message']}\n")
             result = app.acquire_token_by_device_flow(flow)
 
-        if "access_token" not in result:
-            raise RuntimeError(
-                f"Anmeldung fehlgeschlagen: {result.get('error_description', result)}"
-            )
-
-        if cache.has_state_changed:
-            self.config.token_cache_path.write_text(cache.serialize(), encoding="utf-8")
-            self.config.token_cache_path.chmod(0o600)
-
-        self._token = result["access_token"]
-        me = self._get(f"{GRAPH}/me")
-        return me.get("userPrincipalName") or me.get("displayName", "unbekannt")
+        return self._finish_auth(result, cache)
 
     def _get(self, url: str, **params) -> dict:
         resp = requests.get(

@@ -1,13 +1,21 @@
 # Outlook-Rechnungsassistent
 
 Ein Python-Assistent, der dein Outlook-Postfach über die Microsoft-Graph-API
-nach Rechnungen durchsucht (PDF- und Text-Anhänge sowie reine Text-Rechnungen
-im Mailkörper), sie analysiert, klassifiziert und archiviert.
+(die offizielle Outlook-Schnittstelle) nach Rechnungen durchsucht — PDF- und
+Text-Anhänge sowie reine Text-Rechnungen im Mailkörper —, sie analysiert,
+klassifiziert und archiviert. Er greift direkt auf dein Outlook-Konto in der
+Microsoft-Cloud zu; es spielt keine Rolle, ob du Outlook am Desktop, im
+Browser oder am Handy nutzt.
+
+**Bedienung:** über eine lokale Web-Oberfläche im Browser — Doppelklick auf
+`Rechnungsassistent.bat` (Windows) bzw. `./rechnungsassistent.sh`
+(macOS/Linux) genügt. Für Automatisierung gibt es zusätzlich eine
+Kommandozeile.
 
 **Grundprinzipien:**
 
-- **Erklärt jeden Schritt** und fragt vor jeder Aktion nach Zustimmung
-  (`--yes` schaltet die Fragen ab, z. B. für regelmäßige Läufe).
+- **Erklärt jeden Schritt** und tut nichts ohne dein Zutun: Anmeldung, Scan
+  und jede Zuordnung werden per Klick ausgelöst.
 - **Fragt bei unbekannten Absendern**, ob die Rechnung privat oder
   geschäftlich ist und zu welcher Kostenkategorie sie gehört
   (z. B. „Elektroladen", „KI-Tools").
@@ -36,17 +44,37 @@ Die Graph-API verlangt eine registrierte App als „Zugangstür":
 
 ### b) Installation
 
-```bash
-cd invoice-assistant
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp config.example.json config.json                   # und client_id eintragen
-```
+Voraussetzung: Python 3.10+ (Windows: von <https://python.org>, „Add to PATH" ankreuzen).
+
+1. `config.example.json` als `config.json` kopieren und die Client-ID eintragen.
+2. `Rechnungsassistent.bat` doppelklicken (Windows) bzw. `./rechnungsassistent.sh`
+   ausführen (macOS/Linux) — beim ersten Start werden die Abhängigkeiten
+   automatisch installiert, danach öffnet sich der Browser.
 
 Bei einem Firmen-/Schulkonto (Microsoft 365) in `config.json` statt
 `"tenant": "consumers"` die Tenant-ID oder `"organizations"` eintragen.
 
-## 2. Benutzung
+## 2. Benutzung (Web-Oberfläche)
+
+Nach dem Start öffnet sich <http://127.0.0.1:8321> — die Oberfläche läuft nur
+auf deinem Rechner, nichts ist von außen erreichbar.
+
+1. **Anmelden**: Knopf klicken, den angezeigten Code auf der
+   Microsoft-Seite eingeben. Einmalig; der Zugang wird lokal gespeichert.
+2. **Scan starten**: Zeitraum wählen. Der Scan läuft im Hintergrund,
+   der Fortschritt wird angezeigt.
+3. **Offene Fragen** beantworten: Für jede Rechnung eines unbekannten
+   Absenders wählst du per Klick privat/geschäftlich und die Kategorie
+   (oder tippst eine neue). Mit dem Häkchen „Zuordnung merken" wird daraus
+   eine Regel — für die einzelne Adresse oder die ganze Domain — die künftig
+   automatisch angewendet wird.
+4. **Rechnungen**: Liste aller erfassten Rechnungen, filterbar nach Monat und Art.
+5. **Gelernte Regeln**: alle Zuordnungen einsehen und bei Bedarf löschen
+   (dann fragt der Assistent beim nächsten Treffer neu).
+6. **Monatsberichte**: druckbare Zusammenfassung erzeugen und im Browser
+   öffnen (Strg+P zum Drucken).
+
+## 3. Benutzung (Kommandozeile, optional)
 
 ### Postfach durchsuchen
 
@@ -98,20 +126,21 @@ Regel direkt in der SQLite-Datenbank (`data/invoices.sqlite3`, Tabelle
 `rules`) anpassen. Eine neue Antwort auf dasselbe Muster überschreibt die
 alte Regel.
 
-## 3. Datenablage
+## 4. Datenablage
 
 ```
 data/
 ├── invoices.sqlite3        # Datenbank: Rechnungen + gelernte Regeln
 ├── token_cache.json        # Microsoft-Login-Token (nur lokal)
 ├── invoices/2026/06/       # abgelegte geschäftliche Rechnungen
+├── pending/                # noch nicht zugeordnete Rechnungen (Offene Fragen)
 └── reports/                # druckbare Monatsberichte
 ```
 
 Der gesamte `data/`-Ordner sowie `config.json` sind per `.gitignore`
 ausgeschlossen und landen nie im Repository.
 
-## 4. Automatisierung (optional)
+## 5. Automatisierung (optional)
 
 Für einen regelmäßigen Lauf ohne Rückfragen — unbekannte Absender werden
 dann übersprungen und beim nächsten interaktiven Lauf nachgefragt:

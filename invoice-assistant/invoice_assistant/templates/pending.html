@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin:.2rem 0 1rem">Offene Fragen ({{ items|length }})</h2>
+
+{% if not items %}
+<div class="card"><p class="ok">✔ Keine offenen Fragen — alle erkannten Rechnungen sind zugeordnet.</p></div>
+{% endif %}
+
+{% for item in items %}
+<div class="card">
+  <h2>{{ item['sender_name'] or item['sender_email'] }} <span class="muted">&lt;{{ item['sender_email'] }}&gt;</span></h2>
+  <p>
+    <b>{{ item['subject'] or item['filename'] }}</b><br>
+    <span class="muted">
+      Empfangen: {{ item['received_at']|datum }}
+      · Betrag: {{ item|euro }}
+      · Rechnungsnr.: {{ item['invoice_number'] or '–' }}
+      · <a href="{{ url_for('pending_file', pid=item['id']) }}" target="_blank">Rechnung ansehen</a>
+    </span>
+  </p>
+  <form method="post" action="{{ url_for('classify', pid=item['id']) }}">
+    <div class="row">
+      <label>Art<br>
+        <select name="kind" onchange="this.closest('form').querySelector('.cat').style.display = this.value === 'geschaeftlich' ? '' : 'none'">
+          <option value="geschaeftlich">geschäftlich</option>
+          <option value="privat">privat</option>
+        </select>
+      </label>
+      <span class="cat">
+        <label>Kategorie<br>
+          <select name="category">
+            {% for cat in categories %}<option>{{ cat }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>… oder neue Kategorie<br><input type="text" name="category_new" placeholder="z. B. Elektroladen"></label>
+      </span>
+    </div>
+    <div class="row" style="margin-top:.8rem">
+      <label><input type="checkbox" name="save_rule" checked>
+        Zuordnung merken und künftig automatisch anwenden</label>
+      <label>für
+        <select name="scope">
+          <option value="domain">alle Mails von @{{ item['sender_email'].split('@')[-1] }}</option>
+          <option value="email">nur diese Adresse</option>
+        </select>
+      </label>
+    </div>
+    <div class="row" style="margin-top:.8rem">
+      <button>Zuordnen</button>
+      <button class="secondary" formaction="{{ url_for('skip', pid=item['id']) }}"
+              formnovalidate onclick="return confirm('Diesen Eintrag verwerfen? (Keine Rechnung / später erneut scannen)')">
+        Keine Rechnung / verwerfen</button>
+    </div>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

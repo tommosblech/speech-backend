@@ -18,12 +18,11 @@ import sys
 from datetime import datetime, timedelta
 
 from .config import load_config
-from .detector import InvoiceCandidate, candidate_from_body, candidate_from_bytes
+from .detector import InvoiceCandidate
 from .outlook import Message, OutlookClient
 from .report import generate_monthly_report
+from .scanner import collect_candidates
 from .storage import Rule, Store
-
-MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024
 
 
 def confirm(question: str, assume_yes: bool) -> bool:
@@ -167,26 +166,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     print("\nSchritt 3/4 – Prüfe Anhänge und Mailtexte auf Rechnungen.")
     found = 0
     for message in messages:
-        candidates: list[InvoiceCandidate] = []
-        if message.has_attachments:
-            for att in client.list_attachments(message):
-                if att.size > MAX_ATTACHMENT_SIZE:
-                    continue
-                is_pdf = att.content_type == "application/pdf" or att.name.lower().endswith(".pdf")
-                is_text = att.name.lower().endswith((".txt", ".csv"))
-                if not (is_pdf or is_text):
-                    continue
-                data = client.download_attachment(message, att)
-                cand = candidate_from_bytes(att.name, att.content_type, data)
-                if cand:
-                    candidates.append(cand)
-        if not candidates:
-            body_cand = candidate_from_body(message.subject, client.get_body_text(message)) \
-                if _looks_invoice_like(message) else None
-            if body_cand:
-                candidates.append(body_cand)
-
-        for cand in candidates:
+        for cand in collect_candidates(client, message):
             found += 1
             handle_candidate(store, message, cand, args.yes)
 
@@ -195,9 +175,10 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _looks_invoice_like(message: Message) -> bool:
-    text = f"{message.subject} {message.body_preview}".lower()
-    return any(kw in text for kw in ("rechnung", "invoice", "quittung", "receipt", "beleg"))
+def cmd_web(args: argparse.Namespace) -> int:
+    from .web import run
+
+    return run(load_config(args.config), port=args.port, open_browser=not args.no_browser)
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -234,6 +215,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--config", default="config.json", help="Pfad zur config.json")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p_web = sub.add_parser("web", help="Lokale Web-Oberfläche starten (empfohlen)")
+    p_web.add_argument("--port", type=int, default=8321, help="Port (Standard: 8321)")
+    p_web.add_argument("--no-browser", action="store_true", help="Browser nicht automatisch öffnen")
+    p_web.set_defaults(func=cmd_web)
 
     p_scan = sub.add_parser("scan", help="Postfach nach Rechnungen durchsuchen")
     p_scan.add_argument("--since", help="Startdatum YYYY-MM-DD (Standard: vor 31 Tagen)")

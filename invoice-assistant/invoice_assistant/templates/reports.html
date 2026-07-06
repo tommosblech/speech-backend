@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin:.2rem 0 1rem">Monatsberichte</h2>
+<div class="card">
+  <p class="muted">Erzeugt eine druckbare Übersicht aller <b>geschäftlichen</b> Rechnungen eines Monats,
+     gruppiert nach Kostenkategorie, mit Zwischensummen und Gesamtsumme. Zum Drucken im Bericht Strg+P drücken.</p>
+  <form method="post" action="{{ url_for('report_generate') }}" class="row">
+    <label>Monat<br>
+      {% if months %}
+      <select name="month">
+        {% for m in months %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <input type="month" name="month" required>
+      {% endif %}
+    </label>
+    <button>Bericht erzeugen &amp; anzeigen</button>
+  </form>
+</div>
+{% if existing %}
+<div class="card">
+  <h2>Bereits erzeugte Berichte</h2>
+  <ul>
+    {% for m in existing %}
+    <li><a href="{{ url_for('report_view', month=m) }}" target="_blank">Bericht {{ m }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

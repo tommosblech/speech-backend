@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rechnungsassistent</title>
+<style>
+  :root { --accent: #0f6cbd; --bg: #f5f6f8; --card: #fff; --line: #e2e5ea; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Arial, sans-serif; background: var(--bg); color: #1c1c1e; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: .9rem 1.5rem; display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
+  header h1 { font-size: 1.15rem; margin: 0; }
+  nav { display: flex; gap: .25rem; flex-wrap: wrap; }
+  nav a { text-decoration: none; color: #444; padding: .45rem .8rem; border-radius: 8px; font-size: .95rem; }
+  nav a:hover { background: var(--bg); }
+  nav a.active { background: var(--accent); color: #fff; }
+  .badge { background: #d83b01; color: #fff; border-radius: 999px; padding: .05rem .5rem; font-size: .75rem; margin-left: .3rem; }
+  .account { margin-left: auto; font-size: .85rem; color: #666; }
+  main { max-width: 900px; margin: 1.5rem auto; padding: 0 1rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem 1.4rem; margin-bottom: 1.2rem; }
+  .card h2 { margin-top: 0; font-size: 1.05rem; }
+  button, .btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: .55rem 1.1rem; font-size: .95rem; cursor: pointer; text-decoration: none; display: inline-block; }
+  button:hover, .btn:hover { filter: brightness(1.1); }
+  button.secondary { background: #e2e5ea; color: #333; }
+  button.danger { background: #d83b01; }
+  input, select { padding: .45rem .6rem; border: 1px solid #c8ccd4; border-radius: 8px; font-size: .95rem; background: #fff; }
+  label { font-size: .9rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
+  td.num { text-align: right; white-space: nowrap; }
+  .muted { color: #777; font-size: .85rem; }
+  .ok { color: #107c10; }
+  .err { color: #d83b01; }
+  .code { font-size: 1.6rem; letter-spacing: .2rem; font-weight: bold; background: var(--bg); padding: .4rem .9rem; border-radius: 8px; display: inline-block; }
+  .row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: end; }
+  .pill { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .78rem; }
+  .pill.g { background: #e6f2e6; color: #107c10; }
+  .pill.p { background: #ececec; color: #555; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📄 Rechnungsassistent</h1>
+  <nav>
+    <a href="{{ url_for('index') }}" class="{{ 'active' if page == 'home' }}">Start</a>
+    <a href="{{ url_for('pending') }}" class="{{ 'active' if page == 'pending' }}">Offene Fragen{% if pending_count %}<span class="badge">{{ pending_count }}</span>{% endif %}</a>
+    <a href="{{ url_for('invoices') }}" class="{{ 'active' if page == 'invoices' }}">Rechnungen</a>
+    <a href="{{ url_for('rules') }}" class="{{ 'active' if page == 'rules' }}">Gelernte Regeln</a>
+    <a href="{{ url_for('reports') }}" class="{{ 'active' if page == 'reports' }}">Monatsberichte</a>
+  </nav>
+  {% if account %}<span class="account">Angemeldet: {{ account }}</span>{% endif %}
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin:.2rem 0 1rem">Gelernte Regeln</h2>
+<div class="card">
+  <p class="muted">Diese Zuordnungen hat der Assistent aus deinen Antworten gelernt; sie werden bei
+     jedem Scan automatisch angewendet. Eine gelöschte Regel führt beim nächsten Treffer wieder zur Rückfrage.</p>
+  {% if rows %}
+  <table>
+    <tr><th>Absender/Domain</th><th>Gilt für</th><th>Art</th><th>Kategorie</th><th class="num">Treffer</th><th></th></tr>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row['pattern'] }}</td>
+      <td>{{ 'ganze Domain' if row['match_type'] == 'domain' else 'nur diese Adresse' }}</td>
+      <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ 'geschäftlich' if row['kind'] == 'geschaeftlich' else 'privat' }}</span></td>
+      <td>{{ row['category'] }}</td>
+      <td class="num">{{ row['hits'] }}</td>
+      <td>
+        <form method="post" action="{{ url_for('rule_delete', rid=row['id']) }}"
+              onsubmit="return confirm('Regel {{ row['pattern'] }} löschen?')">
+          <button class="danger" style="padding:.25rem .6rem;font-size:.8rem">Löschen</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Noch keine Regeln gelernt — sie entstehen, sobald du unter „Offene Fragen“ Rechnungen zuordnest.</p>
+  {% endif %}
+</div>
+{% endblock %}

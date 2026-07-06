@@ -47,6 +47,23 @@ CREATE TABLE IF NOT EXISTS invoices (
     created_at TEXT NOT NULL,
     UNIQUE(message_id, filename)
 );
+
+CREATE TABLE IF NOT EXISTS pending (
+    id INTEGER PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    sender_email TEXT NOT NULL,
+    sender_name TEXT,
+    subject TEXT,
+    received_at TEXT NOT NULL,
+    invoice_number TEXT,
+    invoice_date TEXT,
+    amount REAL,
+    currency TEXT,
+    file_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(message_id, filename)
+);
 """
 
 
@@ -96,6 +113,10 @@ class Store:
 
     def list_rules(self) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM rules ORDER BY pattern").fetchall()
+
+    def delete_rule(self, rule_id: int) -> None:
+        self.db.execute("DELETE FROM rules WHERE id=?", (rule_id,))
+        self.db.commit()
 
     def known_categories(self) -> list[str]:
         rows = self.db.execute("SELECT DISTINCT category FROM rules").fetchall()
@@ -166,6 +187,97 @@ class Store:
             counter += 1
         path.write_bytes(data)
         return path
+
+    def list_invoices(self, month: str | None = None, kind: str | None = None, limit: int = 500) -> list[sqlite3.Row]:
+        """Rechnungen für die Oberfläche; month als 'YYYY-MM'."""
+        sql = "SELECT * FROM invoices WHERE 1=1"
+        params: list = []
+        if month:
+            sql += " AND substr(received_at, 1, 7) = ?"
+            params.append(month)
+        if kind:
+            sql += " AND kind = ?"
+            params.append(kind)
+        sql += " ORDER BY received_at DESC LIMIT ?"
+        params.append(limit)
+        return self.db.execute(sql, params).fetchall()
+
+    def months_with_invoices(self) -> list[str]:
+        rows = self.db.execute(
+            "SELECT DISTINCT substr(received_at, 1, 7) AS m FROM invoices ORDER BY m DESC"
+        ).fetchall()
+        return [r["m"] for r in rows]
+
+    # ---------- Offene Rückfragen (Warteschlange für die Oberfläche) ----------
+
+    def pending_exists(self, message_id: str, filename: str) -> bool:
+        row = self.db.execute(
+            "SELECT 1 FROM pending WHERE message_id=? AND filename=?",
+            (message_id, filename),
+        ).fetchone()
+        return row is not None
+
+    def add_pending(
+        self,
+        *,
+        message_id: str,
+        filename: str,
+        sender_email: str,
+        sender_name: str,
+        subject: str,
+        received_at: datetime,
+        invoice_number: str | None,
+        invoice_date: datetime | None,
+        amount: float | None,
+        currency: str,
+        content: bytes,
+    ) -> None:
+        """Legt eine unklassifizierte Rechnung samt Datei zur späteren Rückfrage ab."""
+        self.config.pending_dir.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or "rechnung"
+        path = self.config.pending_dir / f"{received_at.strftime('%Y%m%d%H%M%S')}_{safe}"
+        counter = 1
+        while path.exists():
+            path = self.config.pending_dir / f"{received_at.strftime('%Y%m%d%H%M%S')}_{counter}_{safe}"
+            counter += 1
+        path.write_bytes(content)
+        self.db.execute(
+            """INSERT OR IGNORE INTO pending
+               (message_id, filename, sender_email, sender_name, subject, received_at,
+                invoice_number, invoice_date, amount, currency, file_path, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                message_id,
+                filename,
+                sender_email,
+                sender_name,
+                subject,
+                received_at.isoformat(),
+                invoice_number,
+                invoice_date.isoformat() if invoice_date else None,
+                amount,
+                currency,
+                str(path),
+                datetime.now().isoformat(),
+            ),
+        )
+        self.db.commit()
+
+    def list_pending(self) -> list[sqlite3.Row]:
+        return self.db.execute("SELECT * FROM pending ORDER BY received_at").fetchall()
+
+    def count_pending(self) -> int:
+        return self.db.execute("SELECT COUNT(*) AS n FROM pending").fetchone()["n"]
+
+    def get_pending(self, pending_id: int) -> sqlite3.Row | None:
+        return self.db.execute("SELECT * FROM pending WHERE id=?", (pending_id,)).fetchone()
+
+    def delete_pending(self, pending_id: int) -> None:
+        row = self.get_pending(pending_id)
+        if row:
+            Path(row["file_path"]).unlink(missing_ok=True)
+            self.db.execute("DELETE FROM pending WHERE id=?", (pending_id,))
+            self.db.commit()
 
     def invoices_for_month(self, year: int, month: int, kind: str | None = "geschaeftlich") -> list[sqlite3.Row]:
         start = f"{year:04d}-{month:02d}-01"

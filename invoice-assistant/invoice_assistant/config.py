@@ -49,6 +49,10 @@ class Config:
         return self.data_dir / "reports"
 
     @property
+    def pending_dir(self) -> Path:
+        return self.data_dir / "pending"
+
+    @property
     def token_cache_path(self) -> Path:
         return self.data_dir / "token_cache.json"
 

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin:.2rem 0 1rem">Erfasste Rechnungen</h2>
+<div class="card">
+  <form method="get" class="row">
+    <label>Monat<br>
+      <select name="month">
+        <option value="">alle</option>
+        {% for m in months %}<option value="{{ m }}" {{ 'selected' if m == sel_month }}>{{ m }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Art<br>
+      <select name="kind">
+        <option value="">alle</option>
+        <option value="geschaeftlich" {{ 'selected' if sel_kind == 'geschaeftlich' }}>geschäftlich</option>
+        <option value="privat" {{ 'selected' if sel_kind == 'privat' }}>privat</option>
+      </select>
+    </label>
+    <button>Filtern</button>
+  </form>
+</div>
+<div class="card" style="overflow-x:auto">
+  {% if rows %}
+  <table>
+    <tr><th>Datum</th><th>Absender</th><th>Betreff/Datei</th><th>Kategorie</th><th>Art</th><th class="num">Betrag</th></tr>
+    {% for row in rows %}
+    <tr>
+      <td>{{ (row['invoice_date'] or row['received_at'])|datum }}</td>
+      <td>{{ row['sender_name'] or row['sender_email'] }}</td>
+      <td>{{ row['subject'] or row['filename'] }}</td>
+      <td>{{ row['category'] }}</td>
+      <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ 'geschäftlich' if row['kind'] == 'geschaeftlich' else 'privat' }}</span></td>
+      <td class="num">{{ row|euro }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Noch keine Rechnungen erfasst. Starte einen Scan auf der Startseite.</p>
+  {% endif %}
+</div>
+{% endblock %}

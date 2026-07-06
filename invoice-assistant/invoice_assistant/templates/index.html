@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if not configured %}
+<div class="card">
+  <h2>Einrichtung nötig</h2>
+  <p>Es ist noch keine Azure-Client-ID hinterlegt. Der Assistent braucht sie als „Zugangstür"
+     zur Outlook-Schnittstelle (Microsoft Graph) — die Registrierung ist kostenlos und dauert
+     etwa 5 Minuten.</p>
+  <ol>
+    <li><a href="https://portal.azure.com" target="_blank">portal.azure.com</a> → Microsoft Entra ID → App-Registrierungen → Neue Registrierung</li>
+    <li>Kontotypen: „… und persönliche Microsoft-Konten“, Redirect-URI leer lassen</li>
+    <li>Authentifizierung → „Öffentliche Clientflows zulassen“ → Ja</li>
+    <li>API-Berechtigungen → Microsoft Graph → Delegiert → <code>Mail.Read</code></li>
+    <li>Die <b>Anwendungs-ID (Client-ID)</b> in die Datei <code>config.json</code> eintragen
+        (Vorlage: <code>config.example.json</code>) und den Assistenten neu starten.</li>
+  </ol>
+</div>
+{% else %}
+
+<div class="card" id="auth-card">
+  <h2>1. Anmeldung</h2>
+  {% if account %}
+    <p class="ok">✔ Angemeldet als {{ account }} (nur Leserechte, keine Mail wird verändert)</p>
+  {% elif auth.status == 'pending' %}
+    <p>Öffne <a href="{{ auth.verification_uri }}" target="_blank">{{ auth.verification_uri }}</a>
+       und gib diesen Code ein:</p>
+    <p><span class="code">{{ auth.user_code }}</span></p>
+    <p class="muted">Diese Seite aktualisiert sich automatisch, sobald die Anmeldung abgeschlossen ist.</p>
+  {% elif auth.status == 'error' %}
+    <p class="err">Anmeldung fehlgeschlagen: {{ auth.error }}</p>
+    <form method="post" action="{{ url_for('auth_start') }}"><button>Erneut versuchen</button></form>
+  {% else %}
+    <p>Melde dich einmalig mit deinem Microsoft-Konto an. Der Assistent fordert nur
+       <b>Leserechte</b> an und speichert den Zugang lokal — du musst dich nicht bei jedem Start neu anmelden.</p>
+    <form method="post" action="{{ url_for('auth_start') }}"><button>Bei Microsoft anmelden</button></form>
+  {% endif %}
+</div>
+
+<div class="card" id="scan-card">
+  <h2>2. Postfach durchsuchen</h2>
+  {% if scan.status == 'running' %}
+    <p>⏳ <span id="scan-progress">{{ scan.progress }}</span></p>
+    <p class="muted">Erkannte Rechnungen bekannter Absender werden automatisch einsortiert;
+       unbekannte landen unter <a href="{{ url_for('pending') }}">Offene Fragen</a>.</p>
+  {% else %}
+    {% if scan.status == 'done' %}
+      <p class="ok">✔ Letzter Scan: {{ scan.messages }} Mails geprüft, {{ scan.found }} neue Rechnung(en) gefunden —
+         {{ scan.auto }} automatisch zugeordnet, {{ scan.asked }} mit Rückfrage
+         {% if scan.asked %}(<a href="{{ url_for('pending') }}">jetzt beantworten</a>){% endif %}.</p>
+    {% elif scan.status == 'error' %}
+      <p class="err">Scan fehlgeschlagen: {{ scan.error }}</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('scan_start') }}">
+      <div class="row">
+        <label>Von<br><input type="date" name="since" value="{{ default_since }}" required></label>
+        <label>Bis<br><input type="date" name="until" value="{{ default_until }}" required></label>
+        <label>Suchbegriff (optional)<br><input type="text" name="query" placeholder="z. B. Rechnung"></label>
+        <button {% if not account %}disabled title="Bitte zuerst anmelden"{% endif %}>Scan starten</button>
+      </div>
+    </form>
+    <p class="muted">Der Assistent prüft PDF- und Text-Anhänge sowie Mailtexte auf Rechnungsmerkmale
+       (Schlüsselwörter, Rechnungsnummer, Betrag) und extrahiert Betrag, Datum und Rechnungsnummer.
+       Bereits erfasste Rechnungen werden übersprungen — mehrfaches Scannen ist unschädlich.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>So arbeitet der Assistent</h2>
+  <ol class="muted">
+    <li><b>Anmelden</b> — einmalig, nur Leserechte am Postfach.</li>
+    <li><b>Scannen</b> — Zeitraum wählen, Rechnungen werden erkannt und analysiert.</li>
+    <li><b>Zuordnen</b> — bei unbekannten Absendern fragt er: privat oder geschäftlich, welche Kategorie?
+        Die Antwort merkt er sich und wendet sie künftig automatisch an.</li>
+    <li><b>Archivieren</b> — geschäftliche Rechnungen landen in <code>data/invoices/JAHR/MONAT/</code>.</li>
+    <li><b>Berichten</b> — pro Monat eine druckbare Zusammenfassung nach Kategorien.</li>
+  </ol>
+</div>
+
+<script>
+const authPending = {{ 'true' if auth.status == 'pending' else 'false' }};
+const scanRunning = {{ 'true' if scan.status == 'running' else 'false' }};
+if (authPending || scanRunning) {
+  const timer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/status');
+      const s = await r.json();
+      if (authPending && s.auth.status !== 'pending') { clearInterval(timer); location.reload(); }
+      if (scanRunning) {
+        if (s.scan.status !== 'running') { clearInterval(timer); location.reload(); }
+        else { const el = document.getElementById('scan-progress'); if (el) el.textContent = s.scan.progress; }
+      }
+    } catch (e) { /* Server kurz nicht erreichbar – weiter versuchen */ }
+  }, 2000);
+}
+</script>
+{% endif %}
+{% endblock %}

@@ -35,6 +35,7 @@ class AppState:
         self.account: str | None = None
         self.auth: dict = {"status": "none"}
         self.scan: dict = {"status": "idle"}
+        self.scan_log: dict | None = None
         self.update: dict = {"status": "idle"}
 
     def snapshot(self) -> dict:
@@ -138,18 +139,27 @@ def create_app(config: Config) -> Flask:
 
     def scan_worker(since: datetime, until: datetime, query: str | None) -> None:
         db = Store(config)
+        log: dict = {
+            "period": f"{since:%d.%m.%Y} bis {(until - timedelta(days=1)):%d.%m.%Y}",
+            "folders": None,
+            "mails": [],
+        }
         try:
             with state.lock:
                 state.scan = {"status": "running", "progress": "Suche Mails im Postfach …"}
             messages = client.search_messages(since, until, query=query)
+            log["folders"] = getattr(client, "last_folder_stats", None)
             found = auto = asked = 0
             for i, msg in enumerate(messages, 1):
                 with state.lock:
                     state.scan["progress"] = f"Prüfe Mail {i} von {len(messages)} …"
-                for cand in collect_candidates(client, msg):
+                notes: list[str] = []
+                results: list[str] = []
+                for cand in collect_candidates(client, msg, notes=notes):
                     if db.already_recorded(msg.id, cand.filename) or db.pending_exists(
                         msg.id, cand.filename
                     ):
+                        results.append(f"„{cand.filename}“: bereits erfasst, übersprungen")
                         continue
                     found += 1
                     rule = db.find_rule(msg.sender_email)
@@ -175,6 +185,7 @@ def create_app(config: Config) -> Flask:
                             stored_path=stored,
                         )
                         auto += 1
+                        results.append(f"„{cand.filename}“: automatisch → {rule.kind}/{rule.category}")
                     else:
                         db.add_pending(
                             message_id=msg.id,
@@ -190,6 +201,15 @@ def create_app(config: Config) -> Flask:
                             content=cand.content,
                         )
                         asked += 1
+                        results.append(f"„{cand.filename}“: als offene Frage vorgemerkt")
+                if (notes or results) and len(log["mails"]) < 800:
+                    log["mails"].append({
+                        "received": f"{msg.received:%d.%m.%Y}",
+                        "sender": msg.sender_name or msg.sender_email,
+                        "subject": msg.subject,
+                        "results": results,
+                        "notes": notes,
+                    })
             with state.lock:
                 state.scan = {
                     "status": "done",
@@ -198,9 +218,11 @@ def create_app(config: Config) -> Flask:
                     "auto": auto,
                     "asked": asked,
                 }
+                state.scan_log = log
         except Exception as exc:
             with state.lock:
                 state.scan = {"status": "error", "error": str(exc)}
+                state.scan_log = log
 
     @app.post("/scan")
     def scan_start():
@@ -259,6 +281,12 @@ def create_app(config: Config) -> Flask:
             default_since=default_since,
             default_until=default_until,
         )
+
+    @app.get("/scanlog")
+    def scanlog():
+        with state.lock:
+            log = state.scan_log
+        return render_template("scanlog.html", page="home", log=log)
 
     @app.get("/pending")
     def pending():

@@ -119,11 +119,15 @@ class LocalOutlookClient:
         self, since: datetime, until: datetime, query: str | None = None
     ) -> list[Message]:
         result: list[Message] = []
+        self.last_folder_stats: list[tuple[str, int]] = []
         for folder in self._mail_folders():
+            folder_path = str(getattr(folder, "FolderPath", None) or folder.Name)
+            found_here = 0
             try:
                 items = folder.Items
                 items.Sort("[ReceivedTime]", True)  # neueste zuerst
             except Exception:
+                self.last_folder_stats.append((folder_path + " (nicht lesbar)", 0))
                 continue
             for item in items:
                 if getattr(item, "Class", 0) != OL_MAIL_ITEM:
@@ -137,6 +141,7 @@ class LocalOutlookClient:
                 if query and query.lower() not in subject.lower():
                     continue
                 atts = getattr(item, "Attachments", None)
+                found_here += 1
                 result.append(
                     Message(
                         id=str(item.EntryID),
@@ -148,6 +153,7 @@ class LocalOutlookClient:
                         has_attachments=bool(atts and atts.Count > 0),
                     )
                 )
+            self.last_folder_stats.append((folder_path, found_here))
         result.sort(key=lambda m: m.received, reverse=True)
         return result
 

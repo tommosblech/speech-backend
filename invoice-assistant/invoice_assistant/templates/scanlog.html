@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin:.2rem 0 1rem">Scan-Protokoll</h2>
+
+{% if not log %}
+<div class="card"><p class="muted">Noch kein Scan in dieser Sitzung gelaufen.
+   Starte einen Scan auf der <a href="{{ url_for('index') }}">Startseite</a> —
+   danach steht hier, welche Ordner durchsucht wurden und warum einzelne
+   Anhänge nicht als Rechnung gewertet wurden.</p></div>
+{% else %}
+
+<div class="card">
+  <h2>Durchsuchte Ordner (Zeitraum {{ log.period }})</h2>
+  {% if log.folders %}
+  <p class="muted">Fehlt hier ein Konto oder Ordner komplett, ist es in deinem
+     Outlook-Profil nicht eingebunden — dann sag Bescheid.</p>
+  <table>
+    <tr><th>Ordner</th><th class="num">Mails im Zeitraum</th></tr>
+    {% for name, count in log.folders %}
+    <tr><td>{{ name }}</td><td class="num">{{ count }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Für diese Quelle gibt es keine Ordner-Aufschlüsselung (Cloud-Scan).</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Geprüfte Mails mit Ergebnis oder Hinweis ({{ log.mails|length }})</h2>
+  <p class="muted">Hier stehen alle Mails, bei denen etwas erkannt wurde — oder bei denen
+     ein Anhang <b>nicht</b> als Rechnung gewertet wurde, samt Grund. Unauffällige Mails
+     ohne Anhang tauchen nicht auf. Wenn eine erwartete Rechnung fehlt: Suche sie hier
+     und schau auf den Grund.</p>
+  {% if log.mails %}
+  <table>
+    <tr><th>Datum</th><th>Absender</th><th>Betreff</th><th>Ergebnis / Grund</th></tr>
+    {% for m in log.mails %}
+    <tr>
+      <td style="white-space:nowrap">{{ m.received }}</td>
+      <td>{{ m.sender }}</td>
+      <td>{{ m.subject }}</td>
+      <td>
+        {% for r in m.results %}<div class="ok">✔ {{ r }}</div>{% endfor %}
+        {% for n in m.notes %}<div class="muted">• {{ n }}</div>{% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Keine Auffälligkeiten protokolliert.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

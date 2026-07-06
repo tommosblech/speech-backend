@@ -68,6 +68,8 @@
       <p class="ok">✔ Letzter Scan: {{ scan.messages }} Mails geprüft, {{ scan.found }} neue Rechnung(en) gefunden —
          {{ scan.auto }} automatisch zugeordnet, {{ scan.asked }} mit Rückfrage
          {% if scan.asked %}(<a href="{{ url_for('pending') }}">jetzt beantworten</a>){% endif %}.</p>
+      <p class="muted">Fehlt eine Rechnung? Im <a href="{{ url_for('scanlog') }}">Scan-Protokoll</a> steht,
+         welche Ordner durchsucht wurden und warum einzelne Anhänge nicht gewertet wurden.</p>
     {% elif scan.status == 'error' %}
       <p class="err">Scan fehlgeschlagen: {{ scan.error }}</p>
     {% endif %}

@@ -44,15 +44,24 @@ def create_app(config: Config) -> Flask:
     def store() -> Store:
         return Store(config)
 
-    # Beim Start still verbinden: lokales Outlook direkt, Graph aus dem Token-Cache
-    if config.source == "local" or config.client_id:
+    # Beim Start still verbinden (lokales Outlook direkt, Graph aus dem Token-Cache) —
+    # im Hintergrund, damit die Oberfläche sofort erreichbar ist, auch wenn
+    # Outlook langsam startet oder hängt.
+    def silent_worker() -> None:
         try:
             account = client.try_silent()
+        except Exception:
+            account = None
+        with state.lock:
             if account:
                 state.account = account
                 state.auth = {"status": "done"}
-        except Exception:
-            pass
+            elif state.auth.get("status") == "working":
+                state.auth = {"status": "none"}
+
+    if config.source == "local" or config.client_id:
+        state.auth = {"status": "working"}
+        threading.Thread(target=silent_worker, daemon=True).start()
 
     @app.context_processor
     def inject_globals():
@@ -334,9 +343,9 @@ def create_app(config: Config) -> Flask:
 
 
 def run(config: Config, port: int = 8321, open_browser: bool = True) -> int:
-    app = create_app(config)
     url = f"http://127.0.0.1:{port}"
-    print(f"Rechnungsassistent läuft auf {url} (Beenden mit Strg+C)")
+    print(f"Rechnungsassistent startet auf {url} (Beenden mit Strg+C)", flush=True)
+    app = create_app(config)
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     app.run(host="127.0.0.1", port=port, debug=False)

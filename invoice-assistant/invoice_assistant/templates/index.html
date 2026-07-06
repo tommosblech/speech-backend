@@ -25,7 +25,12 @@
        {% if source == 'local' %}(lokales Outlook — es wird nichts verändert oder gelöscht)
        {% else %}(nur Leserechte, keine Mail wird verändert){% endif %}</p>
   {% elif auth.status == 'working' %}
-    <p>⏳ Verbinde …</p>
+    <p>⏳ Verbinde mit {{ 'deinem lokalen Outlook' if source == 'local' else 'Microsoft' }} …</p>
+    {% if source == 'local' %}
+    <p class="muted">Outlook wird bei Bedarf automatisch gestartet — das kann einen Moment dauern.
+       Falls hier nach ~1 Minute nichts passiert: Prüfe, ob Outlook gerade eine Nachfrage
+       (z. B. Profilauswahl oder Sicherheitshinweis) anzeigt, und beantworte sie.</p>
+    {% endif %}
   {% elif auth.status == 'pending' %}
     <p>Öffne <a href="{{ auth.verification_uri }}" target="_blank">{{ auth.verification_uri }}</a>
        und gib diesen Code ein:</p>

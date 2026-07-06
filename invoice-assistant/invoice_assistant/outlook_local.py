@@ -22,6 +22,18 @@ from .outlook import Attachment, Message
 
 OL_FOLDER_INBOX = 6
 OL_MAIL_ITEM = 43
+OL_FOLDER_TYPE_MAIL = 0  # DefaultItemType: 0 = Mail-Ordner
+
+# Ordner, in denen keine eingehenden Rechnungen liegen (deutsch + englisch)
+SKIP_FOLDERS = {
+    "gelöschte elemente", "deleted items", "papierkorb", "trash",
+    "junk-e-mail", "junk email", "junk e-mail", "spam",
+    "gesendete elemente", "sent items", "gesendet", "sent",
+    "postausgang", "outbox", "entwürfe", "drafts",
+    "rss-feeds", "rss feeds", "synchronisierungsprobleme", "synchronization issues",
+    "kalender", "calendar", "kontakte", "contacts", "aufgaben", "tasks",
+    "notizen", "notes", "journal",
+}
 
 
 def _naive(dt) -> datetime:
@@ -80,36 +92,63 @@ class LocalOutlookClient:
         except Exception:
             return f"Lokales Outlook ({ns.CurrentUser.Name})"
 
+    def _mail_folders(self) -> list:
+        """Alle Mail-Ordner aller Konten/Datendateien, ohne Gesendet/Gelöscht/Spam usw."""
+        ns = self._namespace()
+        found: list = []
+
+        def walk(folder) -> None:
+            try:
+                name = str(folder.Name or "").lower()
+                if name in SKIP_FOLDERS:
+                    return
+                if getattr(folder, "DefaultItemType", OL_FOLDER_TYPE_MAIL) == OL_FOLDER_TYPE_MAIL:
+                    found.append(folder)
+                subs = folder.Folders
+                for i in range(1, subs.Count + 1):
+                    walk(subs.Item(i))
+            except Exception:
+                pass  # nicht erreichbare Ordner (z. B. getrennte Archive) überspringen
+
+        roots = ns.Folders  # oberste Ebene = alle Konten und Datendateien
+        for i in range(1, roots.Count + 1):
+            walk(roots.Item(i))
+        return found
+
     def search_messages(
         self, since: datetime, until: datetime, query: str | None = None
     ) -> list[Message]:
-        ns = self._namespace()
-        items = ns.GetDefaultFolder(OL_FOLDER_INBOX).Items
-        items.Sort("[ReceivedTime]", True)  # neueste zuerst
         result: list[Message] = []
-        for item in items:
-            if getattr(item, "Class", 0) != OL_MAIL_ITEM:
-                continue  # Termine, Zustellberichte usw. überspringen
-            received = _naive(item.ReceivedTime)
-            if received >= until:
+        for folder in self._mail_folders():
+            try:
+                items = folder.Items
+                items.Sort("[ReceivedTime]", True)  # neueste zuerst
+            except Exception:
                 continue
-            if received < since:
-                break  # absteigend sortiert: alles Weitere ist älter
-            subject = str(item.Subject or "")
-            if query and query.lower() not in subject.lower():
-                continue
-            atts = getattr(item, "Attachments", None)
-            result.append(
-                Message(
-                    id=str(item.EntryID),
-                    subject=subject or "(kein Betreff)",
-                    sender_name=str(getattr(item, "SenderName", "") or ""),
-                    sender_email=_sender_address(item),
-                    received=received,
-                    body_preview="",
-                    has_attachments=bool(atts and atts.Count > 0),
+            for item in items:
+                if getattr(item, "Class", 0) != OL_MAIL_ITEM:
+                    continue  # Termine, Zustellberichte usw. überspringen
+                received = _naive(item.ReceivedTime)
+                if received >= until:
+                    continue
+                if received < since:
+                    break  # absteigend sortiert: alles Weitere ist älter
+                subject = str(item.Subject or "")
+                if query and query.lower() not in subject.lower():
+                    continue
+                atts = getattr(item, "Attachments", None)
+                result.append(
+                    Message(
+                        id=str(item.EntryID),
+                        subject=subject or "(kein Betreff)",
+                        sender_name=str(getattr(item, "SenderName", "") or ""),
+                        sender_email=_sender_address(item),
+                        received=received,
+                        body_preview="",
+                        has_attachments=bool(atts and atts.Count > 0),
+                    )
                 )
-            )
+        result.sort(key=lambda m: m.received, reverse=True)
         return result
 
     def _item(self, message_id: str):

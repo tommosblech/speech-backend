@@ -79,9 +79,11 @@
         <button {% if not account %}disabled title="Bitte zuerst anmelden"{% endif %}>Scan starten</button>
       </div>
     </form>
-    <p class="muted">Der Assistent prüft PDF- und Text-Anhänge sowie Mailtexte auf Rechnungsmerkmale
-       (Schlüsselwörter, Rechnungsnummer, Betrag) und extrahiert Betrag, Datum und Rechnungsnummer.
-       Bereits erfasste Rechnungen werden übersprungen — mehrfaches Scannen ist unschädlich.</p>
+    <p class="muted">Durchsucht werden <b>alle Konten und alle Ordner</b> deines Outlooks
+       (außer Gesendet, Gelöscht, Spam und Entwürfe). Geprüft werden PDF- und Text-Anhänge sowie
+       Mailtexte auf Rechnungsmerkmale (Schlüsselwörter, Rechnungsnummer, Betrag); Betrag, Datum und
+       Rechnungsnummer werden extrahiert. Bereits erfasste Rechnungen werden übersprungen —
+       mehrfaches Scannen ist unschädlich.</p>
   {% endif %}
 </div>
 

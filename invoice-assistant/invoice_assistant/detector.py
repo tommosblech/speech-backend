@@ -145,9 +145,11 @@ def candidate_from_bytes(
         return None
 
     score, fields = analyze_text(text, filename)
-    # Dateiname wie "Rechnung_2024.pdf" zählt als starkes Signal
+    # Dateiname wie "Rechnung_2024.pdf" zählt allein schon als Rechnung —
+    # wichtig für eingescannte PDFs ohne Textebene, aus denen sich nichts
+    # extrahieren lässt (Betrag bleibt dann leer und wird nachgefragt).
     if any(kw in name_lower for kw in INVOICE_KEYWORDS):
-        score += 1
+        score += 2
 
     if score < 2:
         return None

@@ -16,7 +16,9 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 
-from .bundle import generate_monthly_bundle
+import re
+
+from .bundle import bundle_filename, generate_monthly_bundle
 from .config import Config
 from .report import generate_monthly_report
 from .scanner import collect_candidates, make_client
@@ -323,34 +325,53 @@ def create_app(config: Config) -> Flask:
         store().delete_rule(rid)
         return redirect(url_for("rules"))
 
+    PDF_NAME_RE = re.compile(r"rechnungen_\d{4}-\d{2}_(gesamt|uebersicht)(_[^/\\]+)?\.pdf")
+
+    def _pdf_label(name: str) -> str:
+        m = re.match(r"rechnungen_(\d{4}-\d{2})_(gesamt|uebersicht)(?:_(.+))?\.pdf", name)
+        if not m:
+            return name
+        month, art, cat = m.groups()
+        label = f"{'Gesamt-PDF' if art == 'gesamt' else 'Übersicht (PDF)'} {month}"
+        label += f" – {cat.replace('_', ' ')}" if cat else " – alle Kategorien"
+        return label
+
     @app.get("/reports")
     def reports():
-        months = store().months_with_invoices()
+        db = store()
+        months = db.months_with_invoices()
         existing: list[str] = []
-        bundles: list[str] = []
+        pdfs: list[tuple[str, str]] = []
         if config.reports_dir.exists():
             existing = sorted(
                 (p.stem.replace("rechnungen_", "") for p in config.reports_dir.glob("rechnungen_*.html")),
                 reverse=True,
             )
-            bundles = sorted(
-                (p.stem.replace("rechnungen_", "").replace("_gesamt", "")
-                 for p in config.reports_dir.glob("rechnungen_*_gesamt.pdf")),
+            pdfs = sorted(
+                ((p.name, _pdf_label(p.name)) for p in config.reports_dir.glob("rechnungen_*.pdf")
+                 if PDF_NAME_RE.fullmatch(p.name)),
                 reverse=True,
             )
         return render_template(
-            "reports.html", page="reports", months=months, existing=existing, bundles=bundles
+            "reports.html", page="reports", months=months, existing=existing,
+            pdfs=pdfs, categories=db.categories_with_invoices(),
         )
 
     @app.post("/reports/bundle")
     def bundle_generate():
         year, month = (int(x) for x in request.form["month"].split("-"))
-        generate_monthly_bundle(config, store(), year, month)
-        return redirect(url_for("bundle_view", month=f"{year:04d}-{month:02d}"))
+        category = request.form.get("category", "").strip() or None
+        with_documents = request.form.get("content", "gesamt") == "gesamt"
+        out = generate_monthly_bundle(
+            config, store(), year, month, category=category, with_documents=with_documents
+        )
+        return redirect(url_for("bundle_file", name=out.name))
 
-    @app.get("/reports/bundle/<month>")
-    def bundle_view(month: str):
-        path = config.reports_dir / f"rechnungen_{month}_gesamt.pdf"
+    @app.get("/reports/pdf/<name>")
+    def bundle_file(name: str):
+        if not PDF_NAME_RE.fullmatch(name):
+            abort(404)
+        path = config.reports_dir / name
         if not path.exists():
             abort(404)
         return send_file(path)

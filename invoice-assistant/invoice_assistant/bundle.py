@@ -9,6 +9,7 @@ bekommen eine Hinweis-Seite, damit im Ausdruck nichts unbemerkt fehlt.
 from __future__ import annotations
 
 import io
+import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -50,17 +51,24 @@ def _text_page(title: str, body: str) -> PdfReader:
     return _as_reader(pdf)
 
 
-def _cover(rows, year: int, month: int) -> PdfReader:
+def _slug(category: str) -> str:
+    return re.sub(r"[^A-Za-z0-9ÄÖÜäöüß_-]+", "_", category).strip("_") or "Kategorie"
+
+
+def _cover(rows, year: int, month: int, category: str | None, with_documents: bool) -> PdfReader:
     pdf = FPDF()
     pdf.set_auto_page_break(True, margin=15)
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, _latin(f"Geschäftliche Rechnungen - {MONTH_NAMES[month - 1]} {year}"),
-             new_x="LMARGIN", new_y="NEXT")
+    title = f"Geschäftliche Rechnungen - {MONTH_NAMES[month - 1]} {year}"
+    if category:
+        title += f" - {category}"
+    pdf.cell(0, 10, _latin(title), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", size=9)
-    pdf.cell(0, 6, _latin(f"{len(rows)} Rechnung(en) - erstellt am {datetime.now():%d.%m.%Y} - "
-                          "Belege folgen auf den nächsten Seiten"),
-             new_x="LMARGIN", new_y="NEXT")
+    info = f"{len(rows)} Rechnung(en) - erstellt am {datetime.now():%d.%m.%Y}"
+    if with_documents:
+        info += " - Belege folgen auf den nächsten Seiten"
+    pdf.cell(0, 6, _latin(info), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
     by_cat: dict[str, list] = defaultdict(list)
@@ -97,26 +105,43 @@ def _cover(rows, year: int, month: int) -> PdfReader:
     return _as_reader(pdf)
 
 
-def generate_monthly_bundle(config: Config, store: Store, year: int, month: int) -> Path:
-    rows = store.invoices_for_month(year, month, kind="geschaeftlich")
-    writer = PdfWriter()
-    writer.append(_cover(rows, year, month))
+def bundle_filename(year: int, month: int, category: str | None, with_documents: bool) -> str:
+    name = f"rechnungen_{year:04d}-{month:02d}_" + ("gesamt" if with_documents else "uebersicht")
+    if category:
+        name += f"_{_slug(category)}"
+    return name + ".pdf"
 
-    for r in rows:
-        label = f"{r['sender_name'] or r['sender_email']} - {r['subject'] or r['filename']}"
-        path = Path(r["stored_path"]) if r["stored_path"] else None
-        try:
-            if path and path.exists() and path.suffix.lower() == ".pdf":
-                writer.append(PdfReader(str(path)))
-            elif path and path.exists():
-                writer.append(_text_page(label, path.read_text(encoding="utf-8", errors="replace")))
-            else:
-                writer.append(_text_page(label, "(Zu dieser Rechnung wurde keine Datei abgelegt.)"))
-        except Exception as exc:
-            writer.append(_text_page(label, f"(Datei konnte nicht eingebunden werden: {exc})"))
+
+def generate_monthly_bundle(
+    config: Config,
+    store: Store,
+    year: int,
+    month: int,
+    category: str | None = None,
+    with_documents: bool = True,
+) -> Path:
+    rows = store.invoices_for_month(year, month, kind="geschaeftlich")
+    if category:
+        rows = [r for r in rows if r["category"] == category]
+    writer = PdfWriter()
+    writer.append(_cover(rows, year, month, category, with_documents))
+
+    if with_documents:
+        for r in rows:
+            label = f"{r['sender_name'] or r['sender_email']} - {r['subject'] or r['filename']}"
+            path = Path(r["stored_path"]) if r["stored_path"] else None
+            try:
+                if path and path.exists() and path.suffix.lower() == ".pdf":
+                    writer.append(PdfReader(str(path)))
+                elif path and path.exists():
+                    writer.append(_text_page(label, path.read_text(encoding="utf-8", errors="replace")))
+                else:
+                    writer.append(_text_page(label, "(Zu dieser Rechnung wurde keine Datei abgelegt.)"))
+            except Exception as exc:
+                writer.append(_text_page(label, f"(Datei konnte nicht eingebunden werden: {exc})"))
 
     config.reports_dir.mkdir(parents=True, exist_ok=True)
-    out = config.reports_dir / f"rechnungen_{year:04d}-{month:02d}_gesamt.pdf"
+    out = config.reports_dir / bundle_filename(year, month, category, with_documents)
     with open(out, "wb") as fh:
         writer.write(fh)
     return out

@@ -205,6 +205,12 @@ class Store:
         params.append(limit)
         return self.db.execute(sql, params).fetchall()
 
+    def categories_with_invoices(self, kind: str = "geschaeftlich") -> list[str]:
+        rows = self.db.execute(
+            "SELECT DISTINCT category FROM invoices WHERE kind=? ORDER BY category", (kind,)
+        ).fetchall()
+        return [r["category"] for r in rows]
+
     def months_with_invoices(self) -> list[str]:
         rows = self.db.execute(
             "SELECT DISTINCT substr(received_at, 1, 7) AS m FROM invoices ORDER BY m DESC"

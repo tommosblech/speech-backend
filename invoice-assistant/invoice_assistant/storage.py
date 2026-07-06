@@ -188,6 +188,9 @@ class Store:
         path.write_bytes(data)
         return path
 
+    def get_invoice(self, invoice_id: int) -> sqlite3.Row | None:
+        return self.db.execute("SELECT * FROM invoices WHERE id=?", (invoice_id,)).fetchone()
+
     def list_invoices(self, month: str | None = None, kind: str | None = None, limit: int = 500) -> list[sqlite3.Row]:
         """Rechnungen für die Oberfläche; month als 'YYYY-MM'."""
         sql = "SELECT * FROM invoices WHERE 1=1"

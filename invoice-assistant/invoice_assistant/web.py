@@ -16,6 +16,7 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 
+from .bundle import generate_monthly_bundle
 from .config import Config
 from .report import generate_monthly_report
 from .scanner import collect_candidates, make_client
@@ -306,6 +307,13 @@ def create_app(config: Config) -> Flask:
             sel_kind=kind or "",
         )
 
+    @app.get("/invoices/<int:iid>/file")
+    def invoice_file(iid: int):
+        row = store().get_invoice(iid)
+        if not row or not row["stored_path"] or not Path(row["stored_path"]).exists():
+            abort(404)
+        return send_file(row["stored_path"], download_name=row["filename"])
+
     @app.get("/rules")
     def rules():
         return render_template("rules.html", page="rules", rows=store().list_rules())
@@ -318,13 +326,34 @@ def create_app(config: Config) -> Flask:
     @app.get("/reports")
     def reports():
         months = store().months_with_invoices()
-        existing = sorted(
-            (p.stem.replace("rechnungen_", "") for p in config.reports_dir.glob("rechnungen_*.html")),
-            reverse=True,
-        ) if config.reports_dir.exists() else []
+        existing: list[str] = []
+        bundles: list[str] = []
+        if config.reports_dir.exists():
+            existing = sorted(
+                (p.stem.replace("rechnungen_", "") for p in config.reports_dir.glob("rechnungen_*.html")),
+                reverse=True,
+            )
+            bundles = sorted(
+                (p.stem.replace("rechnungen_", "").replace("_gesamt", "")
+                 for p in config.reports_dir.glob("rechnungen_*_gesamt.pdf")),
+                reverse=True,
+            )
         return render_template(
-            "reports.html", page="reports", months=months, existing=existing
+            "reports.html", page="reports", months=months, existing=existing, bundles=bundles
         )
+
+    @app.post("/reports/bundle")
+    def bundle_generate():
+        year, month = (int(x) for x in request.form["month"].split("-"))
+        generate_monthly_bundle(config, store(), year, month)
+        return redirect(url_for("bundle_view", month=f"{year:04d}-{month:02d}"))
+
+    @app.get("/reports/bundle/<month>")
+    def bundle_view(month: str):
+        path = config.reports_dir / f"rechnungen_{month}_gesamt.pdf"
+        if not path.exists():
+            abort(404)
+        return send_file(path)
 
     @app.post("/reports/generate")
     def report_generate():

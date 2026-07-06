@@ -17,12 +17,32 @@
     <button>Bericht erzeugen &amp; anzeigen</button>
   </form>
 </div>
-{% if existing %}
+<div class="card">
+  <h2>Gesamt-PDF zum Drucken</h2>
+  <p class="muted">Erzeugt <b>ein einziges PDF</b> mit Deckblatt (Übersicht und Summen nach Kategorie)
+     und dahinter <b>allen Rechnungsbelegen</b> des Monats — einmal ausdrucken, alles zusammen.</p>
+  <form method="post" action="{{ url_for('bundle_generate') }}" class="row">
+    <label>Monat<br>
+      {% if months %}
+      <select name="month">
+        {% for m in months %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <input type="month" name="month" required>
+      {% endif %}
+    </label>
+    <button>Gesamt-PDF erzeugen &amp; anzeigen</button>
+  </form>
+</div>
+{% if existing or bundles %}
 <div class="card">
   <h2>Bereits erzeugte Berichte</h2>
   <ul>
+    {% for m in bundles %}
+    <li><a href="{{ url_for('bundle_view', month=m) }}" target="_blank">Gesamt-PDF {{ m }} (alle Belege)</a></li>
+    {% endfor %}
     {% for m in existing %}
-    <li><a href="{{ url_for('report_view', month=m) }}" target="_blank">Bericht {{ m }}</a></li>
+    <li><a href="{{ url_for('report_view', month=m) }}" target="_blank">Übersicht {{ m }} (HTML)</a></li>
     {% endfor %}
   </ul>
 </div>

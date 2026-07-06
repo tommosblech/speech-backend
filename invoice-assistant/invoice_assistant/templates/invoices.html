@@ -22,7 +22,7 @@
 <div class="card" style="overflow-x:auto">
   {% if rows %}
   <table>
-    <tr><th>Datum</th><th>Absender</th><th>Betreff/Datei</th><th>Kategorie</th><th>Art</th><th class="num">Betrag</th></tr>
+    <tr><th>Datum</th><th>Absender</th><th>Betreff/Datei</th><th>Kategorie</th><th>Art</th><th class="num">Betrag</th><th>Beleg</th></tr>
     {% for row in rows %}
     <tr>
       <td>{{ (row['invoice_date'] or row['received_at'])|datum }}</td>
@@ -31,6 +31,7 @@
       <td>{{ row['category'] }}</td>
       <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ 'geschäftlich' if row['kind'] == 'geschaeftlich' else 'privat' }}</span></td>
       <td class="num">{{ row|euro }}</td>
+      <td>{% if row['stored_path'] %}<a href="{{ url_for('invoice_file', iid=row['id']) }}" target="_blank">öffnen</a>{% else %}<span class="muted">–</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </table>

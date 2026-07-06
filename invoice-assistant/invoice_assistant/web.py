@@ -17,9 +17,8 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 
 from .config import Config
-from .outlook import OutlookClient
 from .report import generate_monthly_report
-from .scanner import collect_candidates
+from .scanner import collect_candidates, make_client
 from .storage import Rule, Store
 
 
@@ -40,13 +39,13 @@ class AppState:
 def create_app(config: Config) -> Flask:
     app = Flask(__name__)
     state = AppState()
-    client = OutlookClient(config)
+    client = make_client(config)
 
     def store() -> Store:
         return Store(config)
 
-    # Beim Start still aus dem Token-Cache anmelden, falls möglich
-    if config.client_id:
+    # Beim Start still verbinden: lokales Outlook direkt, Graph aus dem Token-Cache
+    if config.source == "local" or config.client_id:
         try:
             account = client.try_silent()
             if account:
@@ -61,6 +60,7 @@ def create_app(config: Config) -> Flask:
             "pending_count": store().count_pending(),
             "account": state.account,
             "configured": bool(config.client_id),
+            "source": config.source,
         }
 
     @app.template_filter("euro")
@@ -101,7 +101,9 @@ def create_app(config: Config) -> Flask:
     @app.post("/auth/start")
     def auth_start():
         with state.lock:
-            already = state.auth.get("status") in ("pending", "done")
+            already = state.auth.get("status") in ("working", "pending", "done")
+            if not already:
+                state.auth = {"status": "working"}
         if not already:
             threading.Thread(target=auth_worker, daemon=True).start()
         return redirect(url_for("index"))

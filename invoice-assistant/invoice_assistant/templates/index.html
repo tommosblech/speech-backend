@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 
-{% if not configured %}
+{% if source == 'graph' and not configured %}
 <div class="card">
   <h2>Einrichtung nötig</h2>
   <p>Es ist noch keine Azure-Client-ID hinterlegt. Der Assistent braucht sie als „Zugangstür"
@@ -19,17 +19,32 @@
 {% else %}
 
 <div class="card" id="auth-card">
-  <h2>1. Anmeldung</h2>
+  <h2>1. Verbindung zum Postfach</h2>
   {% if account %}
-    <p class="ok">✔ Angemeldet als {{ account }} (nur Leserechte, keine Mail wird verändert)</p>
+    <p class="ok">✔ Verbunden: {{ account }}
+       {% if source == 'local' %}(lokales Outlook — es wird nichts verändert oder gelöscht)
+       {% else %}(nur Leserechte, keine Mail wird verändert){% endif %}</p>
+  {% elif auth.status == 'working' %}
+    <p>⏳ Verbinde …</p>
   {% elif auth.status == 'pending' %}
     <p>Öffne <a href="{{ auth.verification_uri }}" target="_blank">{{ auth.verification_uri }}</a>
        und gib diesen Code ein:</p>
     <p><span class="code">{{ auth.user_code }}</span></p>
     <p class="muted">Diese Seite aktualisiert sich automatisch, sobald die Anmeldung abgeschlossen ist.</p>
   {% elif auth.status == 'error' %}
-    <p class="err">Anmeldung fehlgeschlagen: {{ auth.error }}</p>
+    <p class="err">Verbindung fehlgeschlagen: {{ auth.error }}</p>
+    {% if source == 'local' %}
+    <p class="muted">Häufigste Ursache: Es läuft „Das neue Outlook“ — das hat keine Schnittstelle
+       für Programme. In Outlook oben rechts den Schalter <b>„Neues Outlook“ ausschalten</b>
+       (klassische Ansicht) und erneut versuchen.</p>
+    {% endif %}
     <form method="post" action="{{ url_for('auth_start') }}"><button>Erneut versuchen</button></form>
+  {% elif source == 'local' %}
+    <p>Der Assistent liest die Mails direkt aus deinem <b>lokal installierten Outlook</b> —
+       keine Anmeldung, kein Azure, keine Zugangsdaten nötig.</p>
+    <form method="post" action="{{ url_for('auth_start') }}"><button>Mit Outlook verbinden</button></form>
+    <p class="muted">Voraussetzung: klassisches Outlook für Windows (beim „neuen Outlook“ den
+       Schalter oben rechts ausstellen). Outlook wird bei Bedarf automatisch gestartet.</p>
   {% else %}
     <p>Melde dich einmalig mit deinem Microsoft-Konto an. Der Assistent fordert nur
        <b>Leserechte</b> an und speichert den Zugang lokal — du musst dich nicht bei jedem Start neu anmelden.</p>
@@ -68,7 +83,7 @@
 <div class="card">
   <h2>So arbeitet der Assistent</h2>
   <ol class="muted">
-    <li><b>Anmelden</b> — einmalig, nur Leserechte am Postfach.</li>
+    <li><b>Verbinden</b> — mit dem lokalen Outlook oder per Microsoft-Anmeldung (nur Lesezugriff).</li>
     <li><b>Scannen</b> — Zeitraum wählen, Rechnungen werden erkannt und analysiert.</li>
     <li><b>Zuordnen</b> — bei unbekannten Absendern fragt er: privat oder geschäftlich, welche Kategorie?
         Die Antwort merkt er sich und wendet sie künftig automatisch an.</li>
@@ -78,14 +93,14 @@
 </div>
 
 <script>
-const authPending = {{ 'true' if auth.status == 'pending' else 'false' }};
+const initialAuth = "{{ auth.status }}";
 const scanRunning = {{ 'true' if scan.status == 'running' else 'false' }};
-if (authPending || scanRunning) {
+if (initialAuth === 'pending' || initialAuth === 'working' || scanRunning) {
   const timer = setInterval(async () => {
     try {
       const r = await fetch('/api/status');
       const s = await r.json();
-      if (authPending && s.auth.status !== 'pending') { clearInterval(timer); location.reload(); }
+      if (s.auth.status !== initialAuth && !scanRunning) { clearInterval(timer); location.reload(); }
       if (scanRunning) {
         if (s.scan.status !== 'running') { clearInterval(timer); location.reload(); }
         else { const el = document.getElementById('scan-progress'); if (el) el.textContent = s.scan.progress; }

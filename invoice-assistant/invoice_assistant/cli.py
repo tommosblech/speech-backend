@@ -19,9 +19,9 @@ from datetime import datetime, timedelta
 
 from .config import load_config
 from .detector import InvoiceCandidate
-from .outlook import Message, OutlookClient
+from .outlook import Message
 from .report import generate_monthly_report
-from .scanner import collect_candidates
+from .scanner import collect_candidates, make_client
 from .storage import Rule, Store
 
 
@@ -139,7 +139,7 @@ def handle_candidate(
 
 def cmd_scan(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if not config.client_id:
+    if config.source == "graph" and not config.client_id:
         print(
             "Keine Azure client_id konfiguriert.\n"
             "Bitte OUTLOOK_CLIENT_ID setzen oder config.json anlegen (siehe README)."
@@ -150,12 +150,15 @@ def cmd_scan(args: argparse.Namespace) -> int:
     since = datetime.strptime(args.since, "%Y-%m-%d") if args.since else datetime.now() - timedelta(days=31)
     until = datetime.strptime(args.until, "%Y-%m-%d") if args.until else datetime.now() + timedelta(days=1)
 
-    print("Schritt 1/4 – Anmeldung bei Microsoft (Device-Code, nur Leserechte).")
+    if config.source == "local":
+        print("Schritt 1/4 – Verbinde mit dem lokal installierten Outlook.")
+    else:
+        print("Schritt 1/4 – Anmeldung bei Microsoft (Device-Code, nur Leserechte).")
     if not confirm("Fortfahren?", args.yes):
         return 0
-    client = OutlookClient(config)
+    client = make_client(config)
     account = client.authenticate()
-    print(f"✔ Angemeldet als {account}")
+    print(f"✔ Verbunden: {account}")
 
     print(f"\nSchritt 2/4 – Suche Mails vom {since:%d.%m.%Y} bis {until:%d.%m.%Y}.")
     if not confirm("Postfach jetzt durchsuchen?", args.yes):

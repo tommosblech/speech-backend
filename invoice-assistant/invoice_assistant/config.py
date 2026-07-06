@@ -33,8 +33,16 @@ DEFAULT_CATEGORIES = [
 class Config:
     client_id: str = ""
     tenant: str = "consumers"  # "consumers" für private MS-Konten, sonst Tenant-ID
+    mail_source: str = "auto"  # "local" (Outlook auf diesem Rechner), "graph" (Cloud) oder "auto"
     data_dir: Path = field(default_factory=lambda: DEFAULT_DATA_DIR)
     categories: list[str] = field(default_factory=lambda: list(DEFAULT_CATEGORIES))
+
+    @property
+    def source(self) -> str:
+        """Effektive Mail-Quelle: bei "auto" entscheidet die vorhandene client_id."""
+        if self.mail_source in ("local", "graph"):
+            return self.mail_source
+        return "graph" if self.client_id else "local"
 
     @property
     def db_path(self) -> Path:
@@ -65,6 +73,7 @@ def load_config(path: str | Path = "config.json") -> Config:
         raw = json.loads(p.read_text(encoding="utf-8"))
         cfg.client_id = raw.get("client_id", cfg.client_id)
         cfg.tenant = raw.get("tenant", cfg.tenant)
+        cfg.mail_source = raw.get("mail_source", cfg.mail_source)
         if "data_dir" in raw:
             cfg.data_dir = Path(raw["data_dir"])
         if "categories" in raw:

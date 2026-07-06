@@ -1,5 +1,6 @@
 {
-  "client_id": "HIER-DIE-AZURE-APP-CLIENT-ID",
+  "mail_source": "auto",
+  "client_id": "",
   "tenant": "consumers",
   "data_dir": "data",
   "categories": [

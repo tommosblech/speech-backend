@@ -4,10 +4,20 @@ holt Anhänge einer Mail und liefert alle erkannten Rechnungs-Kandidaten.
 
 from __future__ import annotations
 
+from .config import Config
 from .detector import InvoiceCandidate, candidate_from_body, candidate_from_bytes
 from .outlook import Message, OutlookClient
 
 MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024
+
+
+def make_client(config: Config):
+    """Wählt die Mail-Quelle: lokales Outlook (COM) oder Microsoft-Cloud (Graph)."""
+    if config.source == "local":
+        from .outlook_local import LocalOutlookClient
+
+        return LocalOutlookClient(config)
+    return OutlookClient(config)
 
 
 def looks_invoice_like(message: Message) -> bool:

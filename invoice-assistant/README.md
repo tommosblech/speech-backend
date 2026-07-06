@@ -144,7 +144,17 @@ Regel direkt in der SQLite-Datenbank (`data/invoices.sqlite3`, Tabelle
 `rules`) anpassen. Eine neue Antwort auf dasselbe Muster überschreibt die
 alte Regel.
 
-## 4. Datenablage
+## 4. Aktualisieren
+
+Auf der Startseite gibt es die Karte **„Aktualisierung"**: Ein Klick auf
+„Jetzt aktualisieren" lädt die neueste Version herunter, ersetzt nur die
+Programmdateien (`data/`, `config.json` und `.venv` bleiben unberührt) und
+startet den Assistenten automatisch neu. Falls der direkte Download nicht
+möglich ist (privates Repository), lade die ZIP im Browser herunter und lass
+sie im Downloads-Ordner liegen — der Knopf findet und verwendet sie dann
+automatisch.
+
+## 5. Datenablage
 
 ```
 data/
@@ -158,7 +168,7 @@ data/
 Der gesamte `data/`-Ordner sowie `config.json` sind per `.gitignore`
 ausgeschlossen und landen nie im Repository.
 
-## 5. Automatisierung (optional)
+## 6. Automatisierung (optional)
 
 Für einen regelmäßigen Lauf ohne Rückfragen — unbekannte Absender werden
 dann übersprungen und beim nächsten interaktiven Lauf nachgefragt:

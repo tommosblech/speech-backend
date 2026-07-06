@@ -87,6 +87,28 @@
   {% endif %}
 </div>
 
+<div class="card" id="update-card">
+  <h2>Aktualisierung</h2>
+  {% if update.status == 'running' %}
+    <p>⏳ Update wird heruntergeladen und installiert …</p>
+  {% elif update.status == 'done' %}
+    <p class="ok">✔ Update installiert ({{ update.files }} Datei(en), Quelle: {{ update.source }}).
+       Der Assistent startet jetzt automatisch neu — diese Seite verbindet sich gleich selbst wieder.</p>
+  {% elif update.status == 'error' %}
+    <p class="err">Update fehlgeschlagen: {{ update.error }}</p>
+    <p class="muted">Tipp: Die neueste ZIP von
+       <a href="https://github.com/tommosblech/speech-backend/archive/refs/heads/claude/outlook-invoice-assistant-uqkx85.zip">GitHub herunterladen</a>
+       (im Browser, angemeldet), einfach im Downloads-Ordner liegen lassen und dann erneut auf
+       „Jetzt aktualisieren" klicken — der Knopf findet und verwendet sie automatisch.</p>
+    <form method="post" action="{{ url_for('update_start') }}"><button>Erneut versuchen</button></form>
+  {% else %}
+    <p class="muted">Installierte Version: <b>{{ version }}</b>. Holt die neueste Version und ersetzt nur die
+       Programmdateien — deine Rechnungen, Regeln und Berichte (Ordner <code>data</code>) bleiben unberührt.
+       Danach startet der Assistent automatisch neu.</p>
+    <form method="post" action="{{ url_for('update_start') }}"><button class="secondary">Jetzt aktualisieren</button></form>
+  {% endif %}
+</div>
+
 <div class="card">
   <h2>So arbeitet der Assistent</h2>
   <ol class="muted">
@@ -102,7 +124,19 @@
 <script>
 const initialAuth = "{{ auth.status }}";
 const scanRunning = {{ 'true' if scan.status == 'running' else 'false' }};
-if (initialAuth === 'pending' || initialAuth === 'working' || scanRunning) {
+const updating = {{ 'true' if update.status in ('running', 'done') else 'false' }};
+if (updating) {
+  // Während des Updates startet der Server neu: warten, bis er wieder da ist,
+  // dann Seite neu laden (zeigt die neue Version).
+  const timer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/status');
+      const s = await r.json();
+      if (s.update.status === 'idle') { clearInterval(timer); location.reload(); }
+      if (s.update.status === 'error') { clearInterval(timer); location.reload(); }
+    } catch (e) { /* Server startet gerade neu – weiter versuchen */ }
+  }, 2000);
+} else if (initialAuth === 'pending' || initialAuth === 'working' || scanRunning) {
   const timer = setInterval(async () => {
     try {
       const r = await fetch('/api/status');

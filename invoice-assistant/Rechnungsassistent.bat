@@ -22,6 +22,12 @@ if errorlevel 1 goto :pipfail
 
 echo Starte den Assistenten - dieses Fenster bitte offen lassen.
 .venv\Scripts\python -m invoice_assistant web
+if %errorlevel%==42 (
+  echo.
+  echo Update installiert - der Assistent startet neu ...
+  set "IA_RESTARTED=1"
+  goto :install
+)
 echo.
 echo Der Assistent wurde beendet.
 pause

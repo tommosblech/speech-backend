@@ -16,8 +16,10 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 
+import os
 import re
 
+from . import updater
 from .bundle import bundle_filename, generate_monthly_bundle
 from .config import Config
 from .report import generate_monthly_report
@@ -33,10 +35,21 @@ class AppState:
         self.account: str | None = None
         self.auth: dict = {"status": "none"}
         self.scan: dict = {"status": "idle"}
+        self.update: dict = {"status": "idle"}
 
     def snapshot(self) -> dict:
         with self.lock:
-            return {"account": self.account, "auth": dict(self.auth), "scan": dict(self.scan)}
+            return {
+                "account": self.account,
+                "auth": dict(self.auth),
+                "scan": dict(self.scan),
+                "update": dict(self.update),
+            }
+
+
+def _schedule_restart() -> None:
+    """Beendet den Prozess mit Code 42 — die Startdatei startet dann neu."""
+    threading.Timer(1.5, lambda: os._exit(42)).start()
 
 
 def create_app(config: Config) -> Flask:
@@ -73,6 +86,7 @@ def create_app(config: Config) -> Flask:
             "account": state.account,
             "configured": bool(config.client_id),
             "source": config.source,
+            "version": updater.current_version(),
         }
 
     @app.template_filter("euro")
@@ -201,6 +215,28 @@ def create_app(config: Config) -> Flask:
         threading.Thread(target=scan_worker, args=(since, until, query), daemon=True).start()
         return redirect(url_for("index"))
 
+    # ---------- Selbst-Aktualisierung ----------
+
+    def update_worker() -> None:
+        try:
+            files, source = updater.self_update()
+            with state.lock:
+                state.update = {"status": "done", "files": len(files), "source": source}
+            _schedule_restart()
+        except Exception as exc:
+            with state.lock:
+                state.update = {"status": "error", "error": str(exc)}
+
+    @app.post("/update")
+    def update_start():
+        with state.lock:
+            running = state.update.get("status") in ("running", "done")
+            if not running:
+                state.update = {"status": "running"}
+        if not running:
+            threading.Thread(target=update_worker, daemon=True).start()
+        return redirect(url_for("index"))
+
     @app.get("/api/status")
     def api_status():
         snap = state.snapshot()
@@ -219,6 +255,7 @@ def create_app(config: Config) -> Flask:
             page="home",
             auth=snap["auth"],
             scan=snap["scan"],
+            update=snap["update"],
             default_since=default_since,
             default_until=default_until,
         )
@@ -396,7 +433,7 @@ def run(config: Config, port: int = 8321, open_browser: bool = True) -> int:
     url = f"http://127.0.0.1:{port}"
     print(f"Rechnungsassistent startet auf {url} (Beenden mit Strg+C)", flush=True)
     app = create_app(config)
-    if open_browser:
+    if open_browser and not os.environ.get("IA_RESTARTED"):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     app.run(host="127.0.0.1", port=port, debug=False)
     return 0

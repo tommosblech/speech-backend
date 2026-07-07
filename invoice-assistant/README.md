@@ -52,6 +52,12 @@ die Abhängigkeiten automatisch installiert, danach öffnet sich der Browser
 mit der Oberfläche. Eine `config.json` ist nur für die Cloud-Variante oder
 eigene Kategorien nötig (Vorlage: `config.example.json`).
 
+**Ohne schwarzes Fenster (Windows):** `RechnungsassistentLeise.vbs`
+doppelklicken — der Assistent startet unsichtbar im Hintergrund, nur der
+Browser öffnet sich. Beendet wird er über den **„Beenden"**-Knopf oben
+rechts in der Oberfläche. Für den Alltag: Rechtsklick auf die `.vbs` →
+„Senden an" → „Desktop (Verknüpfung erstellen)".
+
 <details>
 <summary><b>Nur für die Cloud-Variante:</b> Azure-App registrieren (kostenlos, ~5 Minuten)</summary>
 

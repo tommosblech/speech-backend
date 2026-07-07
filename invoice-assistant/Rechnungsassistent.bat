@@ -1,6 +1,9 @@
 @echo off
 setlocal
 rem Doppelklick-Start des Rechnungsassistenten (Windows)
+rem Mit Parameter /leise laeuft er ohne Pausen (fuer den unsichtbaren
+rem Start ueber RechnungsassistentLeise.vbs).
+if /i "%~1"=="/leise" set "QUIET=1"
 cd /d "%~dp0"
 
 if not exist "invoice_assistant\cli.py" goto :noextract
@@ -30,7 +33,7 @@ if %errorlevel%==42 (
 )
 echo.
 echo Der Assistent wurde beendet.
-pause
+if not defined QUIET pause
 exit /b 0
 
 :noextract
@@ -39,7 +42,7 @@ echo.
 echo Wahrscheinlich wurde die ZIP-Datei noch nicht entpackt.
 echo Bitte: Rechtsklick auf die ZIP-Datei, "Alle extrahieren...",
 echo dann die Rechnungsassistent.bat aus dem ENTPACKTEN Ordner starten.
-pause
+if not defined QUIET pause
 exit /b 1
 
 :nopython
@@ -47,13 +50,13 @@ echo FEHLER: Python wurde nicht gefunden.
 echo.
 echo Bitte Python von https://python.org installieren und dabei das
 echo Haekchen "Add python.exe to PATH" setzen.
-pause
+if not defined QUIET pause
 exit /b 1
 
 :venvfail
 echo FEHLER: Die Python-Umgebung (.venv) konnte nicht angelegt werden.
 echo Bitte den Text oberhalb dieser Meldung an Claude schicken.
-pause
+if not defined QUIET pause
 exit /b 1
 
 :pipfail
@@ -62,5 +65,5 @@ echo ------------------------------------------------------
 type install.log
 echo ------------------------------------------------------
 echo Bitte diesen Text (Foto genuegt) an Claude schicken.
-pause
+if not defined QUIET pause
 exit /b 1

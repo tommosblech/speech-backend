@@ -360,6 +360,17 @@ def create_app(config: Config) -> Flask:
         db.db.commit()
         return redirect(url_for("invoices", updated=changed))
 
+    @app.post("/shutdown")
+    def shutdown():
+        threading.Timer(0.8, lambda: os._exit(0)).start()
+        return (
+            "<!doctype html><html lang='de'><meta charset='utf-8'>"
+            "<body style='font-family:sans-serif;margin:3rem'>"
+            "<h2>✔ Der Rechnungsassistent wurde beendet.</h2>"
+            "<p>Du kannst diesen Browser-Tab jetzt schließen. Zum erneuten Start "
+            "die Desktop-Verknüpfung bzw. Startdatei doppelklicken.</p></body></html>"
+        )
+
     @app.post("/reset")
     def reset():
         keep_rules = request.form.get("mode") != "all"
@@ -623,5 +634,10 @@ def run(config: Config, port: int = 8321, open_browser: bool = True) -> int:
     app = create_app(config)
     if open_browser and not os.environ.get("IA_RESTARTED"):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    app.run(host="127.0.0.1", port=port, debug=False)
+    try:
+        app.run(host="127.0.0.1", port=port, debug=False)
+    except OSError:
+        # Läuft bereits (Port belegt) — der Browser wurde geöffnet und zeigt
+        # die laufende Instanz; diese Zweitinstanz beendet sich still.
+        print("Der Rechnungsassistent läuft bereits — öffne die bestehende Oberfläche.")
     return 0

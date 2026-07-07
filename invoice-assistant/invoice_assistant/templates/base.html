@@ -48,7 +48,13 @@
     <a href="{{ url_for('rules') }}" class="{{ 'active' if page == 'rules' }}">Gelernte Regeln</a>
     <a href="{{ url_for('reports') }}" class="{{ 'active' if page == 'reports' }}">Monatsberichte</a>
   </nav>
-  {% if account %}<span class="account">Angemeldet: {{ account }}</span>{% endif %}
+  <span class="account">
+    {% if account %}Angemeldet: {{ account }} · {% endif %}
+    <form method="post" action="{{ url_for('shutdown') }}" style="display:inline"
+          onsubmit="return confirm('Den Rechnungsassistenten beenden? Zum erneuten Start die Verknüpfung doppelklicken.')">
+      <button style="background:none;border:none;color:#a00;cursor:pointer;padding:0;font-size:.85rem;text-decoration:underline">Beenden</button>
+    </form>
+  </span>
 </header>
 <main>
 {% block content %}{% endblock %}

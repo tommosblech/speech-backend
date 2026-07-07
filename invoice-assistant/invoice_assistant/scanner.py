@@ -88,16 +88,7 @@ def effective_date(message: Message, late_senders: tuple | list = ()) -> datetim
     return datetime(year, month, calendar.monthrange(year, month)[1], 12, 0)
 
 
-def _receipt_candidate(name: str, content_type: str, data: bytes) -> InvoiceCandidate:
-    """In einer Beleg-Mail ist jeder Anhang per Definition ein Beleg —
-    Felder wie Betrag werden extrahiert, wo möglich, aber nicht verlangt."""
-    lower = name.lower()
-    if content_type == "application/pdf" or lower.endswith(".pdf"):
-        text = extract_pdf_text(data)
-    elif lower.endswith((".txt", ".csv")):
-        text = data.decode("utf-8", errors="replace")
-    else:
-        text = ""
+def _make_receipt(name: str, data: bytes, text: str) -> InvoiceCandidate:
     fields: dict = {}
     if text:
         _, fields = analyze_text(text, name)
@@ -112,6 +103,39 @@ def _receipt_candidate(name: str, content_type: str, data: bytes) -> InvoiceCand
         currency=fields.get("currency", "EUR"),
         invoice_date=fields.get("invoice_date"),
     )
+
+
+def _receipt_candidates(name: str, content_type: str, data: bytes) -> list[InvoiceCandidate]:
+    """In einer Beleg-Mail ist jeder Anhang per Definition ein Beleg.
+    Mehrseitige PDFs (Sammel-Scans) werden in einen Beleg PRO SEITE zerlegt;
+    Felder wie der Betrag werden je Seite extrahiert, wo möglich."""
+    lower = name.lower()
+    if content_type == "application/pdf" or lower.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader, PdfWriter
+
+            reader = PdfReader(io.BytesIO(data))
+            pages = list(reader.pages)
+        except Exception:
+            pages = []
+        if len(pages) > 1:
+            stem = name[:-4] if lower.endswith(".pdf") else name
+            result: list[InvoiceCandidate] = []
+            for i, page in enumerate(pages, 1):
+                writer = PdfWriter()
+                writer.add_page(page)
+                buf = io.BytesIO()
+                writer.write(buf)
+                try:
+                    text = page.extract_text() or ""
+                except Exception:
+                    text = ""
+                result.append(_make_receipt(f"{stem}_Beleg{i:02d}.pdf", buf.getvalue(), text))
+            return result
+        return [_make_receipt(name, data, extract_pdf_text(data))]
+    if lower.endswith((".txt", ".csv")):
+        return [_make_receipt(name, data, data.decode("utf-8", errors="replace"))]
+    return [_make_receipt(name, data, "")]
 
 
 def make_client(config):
@@ -154,7 +178,10 @@ def collect_candidates(
                 note(f"Beleg-Mail: Anhang „{att.name}“ übersprungen: größer als 15 MB")
                 continue
             data = client.download_attachment(message, att)
-            candidates.append(_receipt_candidate(att.name, att.content_type, data))
+            receipts = _receipt_candidates(att.name, att.content_type, data)
+            if len(receipts) > 1:
+                note(f"Beleg-Mail: „{att.name}“ in {len(receipts)} Einzelbelege (pro Seite) zerlegt")
+            candidates.extend(receipts)
         return candidates
 
     if message.has_attachments:

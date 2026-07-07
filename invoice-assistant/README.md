@@ -101,6 +101,9 @@ muss mit „Belege" beginnen**. Der Assistent behandelt solche Mails besonders:
 - **Jeder Anhang** gilt als Beleg und landet **einzeln** unter „Offene
   Fragen" zur Kategorie-Zuordnung — auch reine Bild-Scans (JPG/PNG) und
   PDFs ohne Texterkennung.
+- **Sammel-Scans**: Eine mehrseitige PDF wird automatisch in einen Beleg
+  **pro Seite** zerlegt (also beim Scannen pro Beleg eine Seite anlegen;
+  eine Leerseite oder Rückseite verwirfst du bei der Zuordnung einfach).
 - Es werden **keine Absender-Regeln** angewendet oder gespeichert (der
   Absender bist ja du selbst).
 - **Buchungsmonat**: Steht ein Monat im Betreff („Belege Juni",

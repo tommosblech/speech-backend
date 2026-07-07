@@ -188,14 +188,42 @@ class Store:
                 return True
         return False
 
+    def _same_invoice_number(
+        self, table: str, sender_email: str | None,
+        invoice_number: str | None, amount: float | None,
+    ) -> bool:
+        """Gleiche Rechnung erkannt an: gleiche Absender-Domain + gleiche
+        Rechnungsnummer (+ gleicher Betrag als Sicherheitsnetz)."""
+        if not sender_email or not invoice_number or not invoice_number.strip():
+            return False
+        domain = sender_email.split("@")[-1]
+        norm = invoice_number.replace(" ", "").upper()
+        sql = (
+            f"SELECT 1 FROM {table} "
+            "WHERE invoice_number IS NOT NULL "
+            "AND REPLACE(UPPER(invoice_number), ' ', '') = ? "
+            "AND sender_email LIKE ? "
+        )
+        params: list = [norm, f"%@{domain}"]
+        if amount is None:
+            sql += "AND amount IS NULL"
+        else:
+            sql += "AND amount = ?"
+            params.append(amount)
+        return self.db.execute(sql, params).fetchone() is not None
+
     def already_recorded(
         self,
         message_id: str,
         filename: str,
         sender_email: str | None = None,
         received_at: datetime | None = None,
+        invoice_number: str | None = None,
+        amount: float | None = None,
     ) -> bool:
-        return self._fingerprint_match("invoices", message_id, filename, sender_email, received_at)
+        return self._fingerprint_match(
+            "invoices", message_id, filename, sender_email, received_at
+        ) or self._same_invoice_number("invoices", sender_email, invoice_number, amount)
 
     # ---------- Verworfene Treffer (nie wieder fragen) ----------
 
@@ -335,8 +363,12 @@ class Store:
         filename: str,
         sender_email: str | None = None,
         received_at: datetime | None = None,
+        invoice_number: str | None = None,
+        amount: float | None = None,
     ) -> bool:
-        return self._fingerprint_match("pending", message_id, filename, sender_email, received_at)
+        return self._fingerprint_match(
+            "pending", message_id, filename, sender_email, received_at
+        ) or self._same_invoice_number("pending", sender_email, invoice_number, amount)
 
     def add_pending(
         self,
@@ -424,6 +456,30 @@ class Store:
                 removed += 1
             else:
                 kept[key] = row
+
+        # Zweiter Durchgang: gleiche Absender-Domain + Rechnungsnummer + Betrag
+        # (erkennt z. B. weitergeleitete Kopien mit anderem Empfangszeitpunkt)
+        rows = self.db.execute(
+            """SELECT id, sender_email, invoice_number, amount, stored_path
+               FROM invoices
+               WHERE invoice_number IS NOT NULL AND TRIM(invoice_number) != ''
+               ORDER BY (stored_path IS NULL), id"""
+        ).fetchall()
+        kept_no: dict[tuple, sqlite3.Row] = {}
+        for row in rows:
+            key = (
+                row["sender_email"].split("@")[-1],
+                row["invoice_number"].replace(" ", "").upper(),
+                row["amount"],
+            )
+            if key in kept_no:
+                keeper = kept_no[key]
+                if row["stored_path"] and row["stored_path"] != keeper["stored_path"]:
+                    absolute_path(row["stored_path"]).unlink(missing_ok=True)
+                self.db.execute("DELETE FROM invoices WHERE id=?", (row["id"],))
+                removed += 1
+            else:
+                kept_no[key] = row
 
         pending_rows = self.db.execute(
             """SELECT id, sender_email, received_at, filename, file_path

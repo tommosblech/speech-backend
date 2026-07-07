@@ -165,8 +165,14 @@ def create_app(config: Config) -> Flask:
                 results: list[str] = []
                 for cand in collect_candidates(client, msg, notes=notes):
                     if (
-                        db.already_recorded(msg.id, cand.filename, msg.sender_email, msg.received)
-                        or db.pending_exists(msg.id, cand.filename, msg.sender_email, msg.received)
+                        db.already_recorded(
+                            msg.id, cand.filename, msg.sender_email, msg.received,
+                            cand.invoice_number, cand.amount,
+                        )
+                        or db.pending_exists(
+                            msg.id, cand.filename, msg.sender_email, msg.received,
+                            cand.invoice_number, cand.amount,
+                        )
                     ):
                         results.append(f"„{cand.filename}“: bereits erfasst, übersprungen")
                         continue

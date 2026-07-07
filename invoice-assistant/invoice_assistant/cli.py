@@ -90,7 +90,10 @@ def handle_candidate(
     candidate: InvoiceCandidate,
     assume_yes: bool,
 ) -> None:
-    if store.already_recorded(message.id, candidate.filename, message.sender_email, message.received):
+    if store.already_recorded(
+        message.id, candidate.filename, message.sender_email, message.received,
+        candidate.invoice_number, candidate.amount,
+    ):
         print(f"  Bereits erfasst, übersprungen: {candidate.filename}")
         return
     if store.is_dismissed(message.id, candidate.filename, message.sender_email, message.received):

@@ -3,6 +3,7 @@
   "client_id": "",
   "tenant": "consumers",
   "data_dir": "data",
+  "vormonat_senders": ["enbw"],
   "categories": [
     "Elektroladen",
     "KI-Tools",

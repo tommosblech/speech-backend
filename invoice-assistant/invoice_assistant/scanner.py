@@ -58,21 +58,33 @@ def _month_from_subject(subject: str, received: datetime) -> tuple[int, int] | N
     return None
 
 
-def effective_date(message: Message) -> datetime:
-    """Buchungsdatum einer Mail: normale Mails = Empfangszeit. Beleg-Mails:
-    Monat aus dem Betreff, sonst — in den ersten 10 Tagen verschickt —
-    der Vormonat (jeweils dessen Monatsletzter)."""
+def is_previous_month_sender(message: Message, patterns: tuple | list = ()) -> bool:
+    """Absender (z. B. EnBW), deren Rechnungen Anfang des Monats für den
+    Vormonat kommen — Teilstring-Abgleich mit der Absender-Domain."""
+    domain = message.sender_email.split("@")[-1].lower()
+    return any(p.lower() in domain for p in patterns if p.strip())
+
+
+def effective_date(message: Message, late_senders: tuple | list = ()) -> datetime:
+    """Buchungsdatum einer Mail: normale Mails = Empfangszeit. Beleg-Mails und
+    Vormonats-Absender (z. B. EnBW): in den ersten 10 Tagen des Monats
+    eingetroffen → Vormonat; bei Beleg-Mails gewinnt ein Monat im Betreff.
+    Ergebnis ist jeweils der Monatsletzte."""
     received = message.received.replace(tzinfo=None) if message.received.tzinfo else message.received
-    if not is_receipt_mail(message):
+    receipt = is_receipt_mail(message)
+    late = is_previous_month_sender(message, late_senders)
+    if not receipt and not late:
         return message.received
-    target = _month_from_subject(message.subject, received)
+    target = _month_from_subject(message.subject, received) if receipt else None
     if target:
         year, month = target
     elif received.day <= 10:
         prev = received.replace(day=1) - timedelta(days=1)
         year, month = prev.year, prev.month
-    else:
+    elif receipt:
         year, month = received.year, received.month
+    else:
+        return message.received  # Vormonats-Absender nach dem 10.: normales Datum
     return datetime(year, month, calendar.monthrange(year, month)[1], 12, 0)
 
 

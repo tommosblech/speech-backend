@@ -90,7 +90,7 @@ def handle_candidate(
     candidate: InvoiceCandidate,
     assume_yes: bool,
 ) -> None:
-    eff = effective_date(message)
+    eff = effective_date(message, store.config.vormonat_senders)
     if store.already_recorded(
         message.id, candidate.filename, message.sender_email, eff,
         candidate.invoice_number, candidate.amount,

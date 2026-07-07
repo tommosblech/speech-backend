@@ -23,7 +23,13 @@ from . import updater
 from .bundle import bundle_filename, generate_monthly_bundle
 from .config import Config, absolute_path
 from .report import generate_monthly_report
-from .scanner import collect_candidates, effective_date, is_receipt_mail, make_client
+from .scanner import (
+    collect_candidates,
+    effective_date,
+    is_previous_month_sender,
+    is_receipt_mail,
+    make_client,
+)
 from .storage import Rule, Store
 
 
@@ -150,7 +156,7 @@ def create_app(config: Config) -> Flask:
         log: dict = {
             "period": (
                 f"{since:%d.%m.%Y} bis {(until - timedelta(days=1)):%d.%m.%Y} "
-                f"(+10 Tage nur für Beleg-Mails)"
+                f"(+10 Tage nur für Beleg-Mails und Vormonats-Absender wie EnBW)"
             ),
             "folders": None,
             "mails": [],
@@ -167,13 +173,16 @@ def create_app(config: Config) -> Flask:
             found = auto = asked = 0
             for i, msg in enumerate(messages, 1):
                 received_naive = msg.received.replace(tzinfo=None)
-                if received_naive >= until and not is_receipt_mail(msg):
+                if received_naive >= until and not (
+                    is_receipt_mail(msg)
+                    or is_previous_month_sender(msg, config.vormonat_senders)
+                ):
                     continue
                 with state.lock:
                     state.scan["progress"] = f"Prüfe Mail {i} von {len(messages)} …"
                 notes: list[str] = []
                 results: list[str] = []
-                eff = effective_date(msg)  # Beleg-Mails: Buchungsmonat statt Empfangszeit
+                eff = effective_date(msg, config.vormonat_senders)  # ggf. Vormonat statt Empfangszeit
                 for cand in collect_candidates(client, msg, notes=notes):
                     if (
                         db.already_recorded(

@@ -36,6 +36,11 @@ class Config:
     mail_source: str = "auto"  # "local" (Outlook auf diesem Rechner), "graph" (Cloud) oder "auto"
     data_dir: Path = field(default_factory=lambda: DEFAULT_DATA_DIR)
     categories: list[str] = field(default_factory=lambda: list(DEFAULT_CATEGORIES))
+    # Absender, deren Anfang des Monats (Tag 1–10) eintreffende Rechnungen zum
+    # VORMONAT gebucht werden — und die der Scan wie Beleg-Mails auch bis zu
+    # 10 Tage über das Enddatum hinaus einsammelt. Teilstring-Abgleich mit der
+    # Absender-Domain, z. B. "enbw" trifft rechnung@enbw.com und info@enbw.de.
+    vormonat_senders: list[str] = field(default_factory=lambda: ["enbw"])
 
     def __post_init__(self) -> None:
         # Immer absolute Pfade: relative Pfade interpretiert z. B. Flask' send_file
@@ -83,6 +88,8 @@ def load_config(path: str | Path = "config.json") -> Config:
             cfg.data_dir = Path(raw["data_dir"])
         if "categories" in raw:
             cfg.categories = list(raw["categories"])
+        if "vormonat_senders" in raw:
+            cfg.vormonat_senders = list(raw["vormonat_senders"])
     cfg.client_id = os.environ.get("OUTLOOK_CLIENT_ID", cfg.client_id)
     cfg.tenant = os.environ.get("OUTLOOK_TENANT", cfg.tenant)
     cfg.data_dir = Path(cfg.data_dir).expanduser().resolve()  # auch bei data_dir aus config.json

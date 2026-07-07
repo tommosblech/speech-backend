@@ -133,6 +133,13 @@ def generate_monthly_bundle(
             try:
                 if path and path.exists() and path.suffix.lower() == ".pdf":
                     writer.append(PdfReader(str(path)))
+                elif path and path.exists() and path.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                    img_pdf = FPDF()
+                    img_pdf.add_page()
+                    img_pdf.set_font("Helvetica", "B", 11)
+                    img_pdf.cell(0, 8, _latin(label)[:100], new_x="LMARGIN", new_y="NEXT")
+                    img_pdf.image(str(path), x=10, y=22, w=180)
+                    writer.append(_as_reader(img_pdf))
                 elif path and path.exists():
                     writer.append(_text_page(label, path.read_text(encoding="utf-8", errors="replace")))
                 else:

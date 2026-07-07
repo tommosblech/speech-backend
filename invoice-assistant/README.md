@@ -92,6 +92,23 @@ auf deinem Rechner, nichts ist von außen erreichbar.
 6. **Monatsberichte**: druckbare Zusammenfassung erzeugen und im Browser
    öffnen (Strg+P zum Drucken).
 
+### Papierbelege einscannen (Beleg-Mails)
+
+Analoge Belege scannst du (als PDF oder Foto) und schickst sie **als Anhänge
+an dich selbst** — gern viele gemischte Belege in einer Mail. Der **Betreff
+muss mit „Belege" beginnen**. Der Assistent behandelt solche Mails besonders:
+
+- **Jeder Anhang** gilt als Beleg und landet **einzeln** unter „Offene
+  Fragen" zur Kategorie-Zuordnung — auch reine Bild-Scans (JPG/PNG) und
+  PDFs ohne Texterkennung.
+- Es werden **keine Absender-Regeln** angewendet oder gespeichert (der
+  Absender bist ja du selbst).
+- **Buchungsmonat**: Steht ein Monat im Betreff („Belege Juni",
+  „Belege 2026-06"), zählt dieser. Sonst gilt: In den **ersten 10 Tagen**
+  eines Monats verschickt → die Belege gehören zum **Vormonat**; später
+  verschickt → zum laufenden Monat.
+- Bild-Belege werden im Monats-Gesamt-PDF als eigene Seite eingebettet.
+
 ## 3. Benutzung (Kommandozeile, optional)
 
 ### Postfach durchsuchen

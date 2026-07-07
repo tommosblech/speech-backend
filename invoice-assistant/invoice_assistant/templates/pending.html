@@ -7,7 +7,18 @@
 {% endif %}
 
 {% for item in items %}
+{% set is_beleg = item['origin'] == 'beleg' %}
 <div class="card">
+  {% if is_beleg %}
+  <h2>📎 Eingescannter Beleg: {{ item['filename'] }}</h2>
+  <p>
+    <span class="muted">
+      Aus Beleg-Mail „{{ item['subject'] }}“ · Buchungsmonat: <b>{{ item['received_at'][5:7] }}/{{ item['received_at'][0:4] }}</b>
+      · Betrag: {{ item|euro }}
+      · <a href="{{ url_for('pending_file', pid=item['id']) }}" target="_blank">Beleg ansehen</a>
+    </span>
+  </p>
+  {% else %}
   <h2>{{ item['sender_name'] or item['sender_email'] }} <span class="muted">&lt;{{ item['sender_email'] }}&gt;</span></h2>
   <p>
     <b>{{ item['subject'] or item['filename'] }}</b><br>
@@ -18,6 +29,7 @@
       · <a href="{{ url_for('pending_file', pid=item['id']) }}" target="_blank">Rechnung ansehen</a>
     </span>
   </p>
+  {% endif %}
   <form method="post" action="{{ url_for('classify', pid=item['id']) }}">
     <div class="row">
       <label>Art<br>
@@ -35,6 +47,7 @@
         <label>… oder neue Kategorie<br><input type="text" name="category_new" placeholder="z. B. Elektroladen"></label>
       </span>
     </div>
+    {% if not is_beleg %}
     <div class="row" style="margin-top:.8rem">
       <label><input type="checkbox" name="save_rule" checked>
         Zuordnung merken und künftig automatisch anwenden</label>
@@ -45,6 +58,10 @@
         </select>
       </label>
     </div>
+    {% else %}
+    <p class="muted" style="margin-top:.8rem">Eingescannter Beleg — es wird keine Absender-Regel gespeichert,
+       jeder Beleg wird einzeln zugeordnet.</p>
+    {% endif %}
     <div class="row" style="margin-top:.8rem">
       <button>Zuordnen</button>
       <button class="secondary" formaction="{{ url_for('skip', pid=item['id']) }}"

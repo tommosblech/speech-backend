@@ -21,7 +21,7 @@ from .config import load_config
 from .detector import InvoiceCandidate
 from .outlook import Message
 from .report import generate_monthly_report
-from .scanner import collect_candidates, make_client
+from .scanner import collect_candidates, effective_date, make_client
 from .storage import Rule, Store
 
 
@@ -90,13 +90,14 @@ def handle_candidate(
     candidate: InvoiceCandidate,
     assume_yes: bool,
 ) -> None:
+    eff = effective_date(message)
     if store.already_recorded(
-        message.id, candidate.filename, message.sender_email, message.received,
+        message.id, candidate.filename, message.sender_email, eff,
         candidate.invoice_number, candidate.amount,
     ):
         print(f"  Bereits erfasst, übersprungen: {candidate.filename}")
         return
-    if store.is_dismissed(message.id, candidate.filename, message.sender_email, message.received):
+    if store.is_dismissed(message.id, candidate.filename, message.sender_email, eff):
         print(f"  Früher verworfen, übersprungen: {candidate.filename}")
         return
 
@@ -105,7 +106,7 @@ def handle_candidate(
     print(f"  Von: {message.sender_name} <{message.sender_email}> am {message.received:%d.%m.%Y}")
     print(f"  Betrag: {amount} | Rechnungsnr.: {candidate.invoice_number or 'unbekannt'}")
 
-    rule = store.find_rule(message.sender_email)
+    rule = None if candidate.source == "beleg" else store.find_rule(message.sender_email)
     if rule and rule.kind == "ignorieren":
         print(f"  Absender wird laut Regel ignoriert: {rule.pattern}")
         return
@@ -121,9 +122,9 @@ def handle_candidate(
 
     stored_path = None
     if kind == "geschaeftlich":
-        if confirm(f"  Datei unter data/invoices/{message.received.year}/{message.received.month:02d}/ ablegen?", assume_yes):
+        if confirm(f"  Datei unter data/invoices/{eff.year}/{eff.month:02d}/ ablegen?", assume_yes):
             stored_path = store.store_file(
-                message.received, message.sender_email, candidate.filename, candidate.content
+                eff, message.sender_email, candidate.filename, candidate.content
             )
             print(f"  ✔ Gespeichert: {stored_path}")
     else:
@@ -135,7 +136,7 @@ def handle_candidate(
         sender_email=message.sender_email,
         sender_name=message.sender_name,
         subject=message.subject,
-        received_at=message.received,
+        received_at=eff,
         invoice_number=candidate.invoice_number,
         invoice_date=candidate.invoice_date,
         amount=candidate.amount,

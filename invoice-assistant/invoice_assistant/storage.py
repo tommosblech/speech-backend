@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS pending (
     currency TEXT,
     file_path TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    origin TEXT NOT NULL DEFAULT '',
     UNIQUE(message_id, filename)
 );
 """
@@ -93,6 +94,10 @@ class Store:
         self.db = sqlite3.connect(config.db_path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        # Migration älterer Datenbanken: origin-Spalte nachrüsten
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(pending)")}
+        if "origin" not in cols:
+            self.db.execute("ALTER TABLE pending ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
         self.db.commit()
 
     # ---------- Regeln (das "Gedächtnis" des Assistenten) ----------
@@ -384,6 +389,7 @@ class Store:
         amount: float | None,
         currency: str,
         content: bytes,
+        origin: str = "",
     ) -> None:
         """Legt eine unklassifizierte Rechnung samt Datei zur späteren Rückfrage ab."""
         self.config.pending_dir.mkdir(parents=True, exist_ok=True)
@@ -397,8 +403,8 @@ class Store:
         self.db.execute(
             """INSERT OR IGNORE INTO pending
                (message_id, filename, sender_email, sender_name, subject, received_at,
-                invoice_number, invoice_date, amount, currency, file_path, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                invoice_number, invoice_date, amount, currency, file_path, created_at, origin)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 message_id,
                 filename,
@@ -412,6 +418,7 @@ class Store:
                 currency,
                 str(path),
                 datetime.now().isoformat(),
+                origin,
             ),
         )
         self.db.commit()

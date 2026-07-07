@@ -23,7 +23,7 @@ from . import updater
 from .bundle import bundle_filename, generate_monthly_bundle
 from .config import Config, absolute_path
 from .report import generate_monthly_report
-from .scanner import collect_candidates, make_client
+from .scanner import collect_candidates, effective_date, make_client
 from .storage import Rule, Store
 
 
@@ -163,23 +163,26 @@ def create_app(config: Config) -> Flask:
                     state.scan["progress"] = f"Prüfe Mail {i} von {len(messages)} …"
                 notes: list[str] = []
                 results: list[str] = []
+                eff = effective_date(msg)  # Beleg-Mails: Buchungsmonat statt Empfangszeit
                 for cand in collect_candidates(client, msg, notes=notes):
                     if (
                         db.already_recorded(
-                            msg.id, cand.filename, msg.sender_email, msg.received,
+                            msg.id, cand.filename, msg.sender_email, eff,
                             cand.invoice_number, cand.amount,
                         )
                         or db.pending_exists(
-                            msg.id, cand.filename, msg.sender_email, msg.received,
+                            msg.id, cand.filename, msg.sender_email, eff,
                             cand.invoice_number, cand.amount,
                         )
                     ):
                         results.append(f"„{cand.filename}“: bereits erfasst, übersprungen")
                         continue
-                    if db.is_dismissed(msg.id, cand.filename, msg.sender_email, msg.received):
+                    if db.is_dismissed(msg.id, cand.filename, msg.sender_email, eff):
                         results.append(f"„{cand.filename}“: früher verworfen, übersprungen")
                         continue
-                    rule = db.find_rule(msg.sender_email)
+                    # Bei eigenen Beleg-Mails keine Absender-Regeln: jeder Anhang
+                    # wird einzeln zugeordnet (Absender bist du selbst).
+                    rule = None if cand.source == "beleg" else db.find_rule(msg.sender_email)
                     if rule and rule.kind == "ignorieren":
                         results.append(f"„{cand.filename}“: Absender wird laut Regel ignoriert")
                         continue
@@ -188,7 +191,7 @@ def create_app(config: Config) -> Flask:
                         stored = None
                         if rule.kind == "geschaeftlich":
                             stored = db.store_file(
-                                msg.received, msg.sender_email, cand.filename, cand.content
+                                eff, msg.sender_email, cand.filename, cand.content
                             )
                         db.record_invoice(
                             message_id=msg.id,
@@ -196,7 +199,7 @@ def create_app(config: Config) -> Flask:
                             sender_email=msg.sender_email,
                             sender_name=msg.sender_name,
                             subject=msg.subject,
-                            received_at=msg.received,
+                            received_at=eff,
                             invoice_number=cand.invoice_number,
                             invoice_date=cand.invoice_date,
                             amount=cand.amount,
@@ -214,15 +217,21 @@ def create_app(config: Config) -> Flask:
                             sender_email=msg.sender_email,
                             sender_name=msg.sender_name,
                             subject=msg.subject,
-                            received_at=msg.received,
+                            received_at=eff,
                             invoice_number=cand.invoice_number,
                             invoice_date=cand.invoice_date,
                             amount=cand.amount,
                             currency=cand.currency,
                             content=cand.content,
+                            origin=cand.source if cand.source == "beleg" else "",
                         )
                         asked += 1
-                        results.append(f"„{cand.filename}“: als offene Frage vorgemerkt")
+                        if cand.source == "beleg":
+                            results.append(
+                                f"„{cand.filename}“: Beleg vorgemerkt (Buchungsmonat {eff:%m/%Y})"
+                            )
+                        else:
+                            results.append(f"„{cand.filename}“: als offene Frage vorgemerkt")
                 if (notes or results) and len(log["mails"]) < 800:
                     log["mails"].append({
                         "received": f"{msg.received:%d.%m.%Y}",
@@ -374,7 +383,8 @@ def create_app(config: Config) -> Flask:
         if kind == "privat":
             category = "Privat"
 
-        if request.form.get("save_rule"):
+        origin = item["origin"] if "origin" in item.keys() else ""
+        if request.form.get("save_rule") and origin != "beleg":
             scope = request.form.get("scope", "domain")
             if scope == "email":
                 rule = Rule("email", item["sender_email"], kind, category)

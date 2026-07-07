@@ -7,12 +7,16 @@ NICHT als Rechnung gewertet wurde — Grundlage für das Scan-Protokoll.
 
 from __future__ import annotations
 
+import calendar
 import io
+import re
 import zipfile
+from datetime import datetime, timedelta
 from pathlib import PurePosixPath, PureWindowsPath
 
-from .detector import InvoiceCandidate, candidate_from_body, candidate_from_bytes
+from .detector import InvoiceCandidate, analyze_text, candidate_from_body, candidate_from_bytes, extract_pdf_text
 from .outlook import Message, OutlookClient
+from .report import MONTH_NAMES
 
 MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024
 
@@ -20,6 +24,82 @@ BODY_KEYWORDS = (
     "rechnung", "invoice", "quittung", "receipt", "beleg",
     "billing", "payment", "zahlung", "gutschrift",
 )
+
+IMAGE_EXTS = (".jpg", ".jpeg", ".png")
+
+# ---------- Beleg-Mails: selbst eingescannte Papierbelege ----------
+# Konvention: Betreff beginnt mit "Beleg"/"Belege" (z. B. "Belege Juni",
+# "Belege 2026-06"). Dann gilt JEDER Anhang als Beleg und wird einzeln zur
+# Zuordnung vorgelegt — ohne Absender-Regeln, denn der Absender bist du selbst.
+
+
+def is_receipt_mail(message: Message) -> bool:
+    return message.subject.strip().lower().startswith(("beleg", "#beleg"))
+
+
+_MONTH_BY_NAME = {name.lower(): i + 1 for i, name in enumerate(MONTH_NAMES)}
+
+
+def _month_from_subject(subject: str, received: datetime) -> tuple[int, int] | None:
+    m = re.search(r"\b(20\d{2})[-/.](\d{1,2})\b", subject)
+    if m and 1 <= int(m.group(2)) <= 12:
+        return int(m.group(1)), int(m.group(2))
+    m = re.search(r"\b(\d{1,2})[/.](20\d{2})\b", subject)
+    if m and 1 <= int(m.group(1)) <= 12:
+        return int(m.group(2)), int(m.group(1))
+    lowered = subject.lower()
+    for name, month in _MONTH_BY_NAME.items():
+        if name in lowered:
+            year_match = re.search(r"\b(20\d{2})\b", subject)
+            year = int(year_match.group(1)) if year_match else received.year
+            if not year_match and month > received.month:
+                year -= 1  # z. B. "Belege Dezember" im Januar verschickt
+            return year, month
+    return None
+
+
+def effective_date(message: Message) -> datetime:
+    """Buchungsdatum einer Mail: normale Mails = Empfangszeit. Beleg-Mails:
+    Monat aus dem Betreff, sonst — in den ersten 10 Tagen verschickt —
+    der Vormonat (jeweils dessen Monatsletzter)."""
+    received = message.received.replace(tzinfo=None) if message.received.tzinfo else message.received
+    if not is_receipt_mail(message):
+        return message.received
+    target = _month_from_subject(message.subject, received)
+    if target:
+        year, month = target
+    elif received.day <= 10:
+        prev = received.replace(day=1) - timedelta(days=1)
+        year, month = prev.year, prev.month
+    else:
+        year, month = received.year, received.month
+    return datetime(year, month, calendar.monthrange(year, month)[1], 12, 0)
+
+
+def _receipt_candidate(name: str, content_type: str, data: bytes) -> InvoiceCandidate:
+    """In einer Beleg-Mail ist jeder Anhang per Definition ein Beleg —
+    Felder wie Betrag werden extrahiert, wo möglich, aber nicht verlangt."""
+    lower = name.lower()
+    if content_type == "application/pdf" or lower.endswith(".pdf"):
+        text = extract_pdf_text(data)
+    elif lower.endswith((".txt", ".csv")):
+        text = data.decode("utf-8", errors="replace")
+    else:
+        text = ""
+    fields: dict = {}
+    if text:
+        _, fields = analyze_text(text, name)
+    return InvoiceCandidate(
+        source="beleg",
+        filename=name,
+        content=data,
+        text=text,
+        score=99,
+        invoice_number=fields.get("invoice_number"),
+        amount=fields.get("amount"),
+        currency=fields.get("currency", "EUR"),
+        invoice_date=fields.get("invoice_date"),
+    )
 
 
 def make_client(config):
@@ -48,6 +128,23 @@ def collect_candidates(
             notes.append(text)
 
     candidates: list[InvoiceCandidate] = []
+
+    if is_receipt_mail(message):
+        if not message.has_attachments:
+            note("Beleg-Mail ohne Anhänge — nichts zu übernehmen")
+            return []
+        for att in client.list_attachments(message):
+            lower = att.name.lower()
+            if not (lower.endswith((".pdf", ".txt", ".csv")) or lower.endswith(IMAGE_EXTS)):
+                note(f"Beleg-Mail: Anhang „{att.name}“ übersprungen (nur PDF, Bilder, TXT, CSV)")
+                continue
+            if att.size > MAX_ATTACHMENT_SIZE:
+                note(f"Beleg-Mail: Anhang „{att.name}“ übersprungen: größer als 15 MB")
+                continue
+            data = client.download_attachment(message, att)
+            candidates.append(_receipt_candidate(att.name, att.content_type, data))
+        return candidates
+
     if message.has_attachments:
         for att in client.list_attachments(message):
             name_lower = att.name.lower()

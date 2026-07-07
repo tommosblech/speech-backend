@@ -129,6 +129,32 @@ class Store:
         self.db.execute("DELETE FROM rules WHERE id=?", (rule_id,))
         self.db.commit()
 
+    def get_rule(self, rule_id: int) -> sqlite3.Row | None:
+        return self.db.execute("SELECT * FROM rules WHERE id=?", (rule_id,)).fetchone()
+
+    def update_rule(self, rule_id: int, kind: str, category: str) -> None:
+        self.db.execute(
+            "UPDATE rules SET kind=?, category=? WHERE id=?", (kind, category, rule_id)
+        )
+        self.db.commit()
+
+    def reclassify_matching_invoices(
+        self, match_type: str, pattern: str, kind: str, category: str
+    ) -> int:
+        """Wendet eine geänderte Regel rückwirkend auf erfasste Rechnungen an."""
+        if match_type == "email":
+            cur = self.db.execute(
+                "UPDATE invoices SET kind=?, category=? WHERE sender_email=?",
+                (kind, category, pattern),
+            )
+        else:
+            cur = self.db.execute(
+                "UPDATE invoices SET kind=?, category=? WHERE sender_email LIKE ?",
+                (kind, category, f"%@{pattern}"),
+            )
+        self.db.commit()
+        return cur.rowcount
+
     def known_categories(self) -> list[str]:
         rows = self.db.execute("SELECT DISTINCT category FROM rules").fetchall()
         learned = [r["category"] for r in rows]
@@ -253,6 +279,27 @@ class Store:
 
     def get_invoice(self, invoice_id: int) -> sqlite3.Row | None:
         return self.db.execute("SELECT * FROM invoices WHERE id=?", (invoice_id,)).fetchone()
+
+    def delete_invoice(self, invoice_id: int, *, dismiss: bool = True) -> None:
+        """Entfernt eine Rechnung samt Beleg-Datei; mit dismiss=True merkt sich der
+        Assistent die Mail, damit sie beim nächsten Scan nicht wieder auftaucht."""
+        row = self.get_invoice(invoice_id)
+        if not row:
+            return
+        if row["stored_path"]:
+            from .config import absolute_path
+
+            absolute_path(row["stored_path"]).unlink(missing_ok=True)
+        if dismiss:
+            self.add_dismissed(
+                message_id=row["message_id"],
+                filename=row["filename"],
+                sender_email=row["sender_email"],
+                received_at=row["received_at"],
+                subject=row["subject"],
+            )
+        self.db.execute("DELETE FROM invoices WHERE id=?", (invoice_id,))
+        self.db.commit()
 
     def list_invoices(self, month: str | None = None, kind: str | None = None, limit: int = 500) -> list[sqlite3.Row]:
         """Rechnungen für die Oberfläche; month als 'YYYY-MM'."""

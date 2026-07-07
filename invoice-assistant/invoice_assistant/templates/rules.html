@@ -3,26 +3,46 @@
 <h2 style="margin:.2rem 0 1rem">Gelernte Regeln</h2>
 <div class="card">
   <p class="muted">Diese Zuordnungen hat der Assistent aus deinen Antworten gelernt; sie werden bei
-     jedem Scan automatisch angewendet. Eine gelöschte Regel führt beim nächsten Treffer wieder zur Rückfrage.</p>
+     jedem Scan automatisch angewendet. Du kannst Art und Kategorie hier direkt ändern — mit dem
+     Häkchen werden auch die bereits erfassten Rechnungen des Absenders umgestellt. Eine gelöschte
+     Regel führt beim nächsten Treffer wieder zur Rückfrage.</p>
   {% if rows %}
-  <table>
-    <tr><th>Absender/Domain</th><th>Gilt für</th><th>Art</th><th>Kategorie</th><th class="num">Treffer</th><th></th></tr>
-    {% for row in rows %}
-    <tr>
-      <td>{{ row['pattern'] }}</td>
-      <td>{{ 'ganze Domain' if row['match_type'] == 'domain' else 'nur diese Adresse' }}</td>
-      <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ {'geschaeftlich': 'geschäftlich', 'privat': 'privat', 'ignorieren': 'ignorieren'}.get(row['kind'], row['kind']) }}</span></td>
-      <td>{{ row['category'] }}</td>
-      <td class="num">{{ row['hits'] }}</td>
-      <td>
-        <form method="post" action="{{ url_for('rule_delete', rid=row['id']) }}"
-              onsubmit="return confirm('Regel {{ row['pattern'] }} löschen?')">
-          <button class="danger" style="padding:.25rem .6rem;font-size:.8rem">Löschen</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
+  {% for row in rows %}
+  <form method="post" action="{{ url_for('rule_update', rid=row['id']) }}"
+        style="border-top:1px solid var(--line); padding:.7rem 0">
+    <div class="row" style="align-items:center">
+      <b style="min-width:220px">{{ row['pattern'] }}</b>
+      <span class="muted">{{ 'ganze Domain' if row['match_type'] == 'domain' else 'nur diese Adresse' }}
+        · {{ row['hits'] }} Treffer</span>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <label>Art<br>
+        <select name="kind" onchange="this.closest('form').querySelector('.cat').style.display = this.value === 'geschaeftlich' ? '' : 'none'">
+          <option value="geschaeftlich" {{ 'selected' if row['kind'] == 'geschaeftlich' }}>geschäftlich</option>
+          <option value="privat" {{ 'selected' if row['kind'] == 'privat' }}>privat</option>
+          <option value="ignorieren" {{ 'selected' if row['kind'] == 'ignorieren' }}>ignorieren (nie fragen, nicht erfassen)</option>
+        </select>
+      </label>
+      <span class="cat" {% if row['kind'] != 'geschaeftlich' %}style="display:none"{% endif %}>
+        <label>Kategorie<br>
+          <select name="category">
+            {% for cat in categories %}<option {{ 'selected' if cat == row['category'] }}>{{ cat }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>… oder neue Kategorie<br><input type="text" name="category_new" placeholder="z. B. Elektroladen"></label>
+      </span>
+      <label style="align-self:end"><input type="checkbox" name="apply_existing">
+        auch bereits erfasste Rechnungen umstellen</label>
+    </div>
+    <div class="row" style="margin-top:.6rem">
+      <button style="padding:.35rem .8rem">Speichern</button>
+      <button class="danger" style="padding:.35rem .8rem"
+              formaction="{{ url_for('rule_delete', rid=row['id']) }}"
+              onclick="return confirm('Regel {{ row['pattern'] }} löschen? Beim nächsten Treffer wird wieder gefragt.')">
+        Löschen</button>
+    </div>
+  </form>
+  {% endfor %}
   {% else %}
   <p class="muted">Noch keine Regeln gelernt — sie entstehen, sobald du unter „Offene Fragen“ Rechnungen zuordnest.</p>
   {% endif %}

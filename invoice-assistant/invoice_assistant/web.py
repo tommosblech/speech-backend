@@ -405,9 +405,64 @@ def create_app(config: Config) -> Flask:
             abort(404)
         return send_file(path, download_name=row["filename"])
 
+    @app.post("/invoices/<int:iid>/delete")
+    def invoice_delete(iid: int):
+        db = store()
+        # Entfernen wird gemerkt (dismissed), damit der nächste Scan die Mail
+        # nicht erneut als Rechnung vorschlägt; "reask" schickt sie stattdessen
+        # bewusst zurück in die offenen Fragen.
+        reask = request.form.get("mode") == "reask"
+        row = db.get_invoice(iid)
+        if row and reask and row["stored_path"] and absolute_path(row["stored_path"]).exists():
+            db.add_pending(
+                message_id=row["message_id"],
+                filename=row["filename"],
+                sender_email=row["sender_email"],
+                sender_name=row["sender_name"] or "",
+                subject=row["subject"] or "",
+                received_at=datetime.fromisoformat(row["received_at"]),
+                invoice_number=row["invoice_number"],
+                invoice_date=datetime.fromisoformat(row["invoice_date"]) if row["invoice_date"] else None,
+                amount=row["amount"],
+                currency=row["currency"] or "EUR",
+                content=absolute_path(row["stored_path"]).read_bytes(),
+            )
+            db.delete_invoice(iid, dismiss=False)
+        else:
+            db.delete_invoice(iid, dismiss=not reask)
+        args = {k: v for k, v in (("month", request.form.get("month")), ("kind", request.form.get("kind"))) if v}
+        return redirect(url_for("pending") if reask else url_for("invoices", **args))
+
     @app.get("/rules")
     def rules():
-        return render_template("rules.html", page="rules", rows=store().list_rules())
+        db = store()
+        return render_template(
+            "rules.html", page="rules", rows=db.list_rules(),
+            categories=db.known_categories(),
+        )
+
+    @app.post("/rules/<int:rid>/update")
+    def rule_update(rid: int):
+        db = store()
+        row = db.get_rule(rid)
+        if not row:
+            abort(404)
+        kind = request.form.get("kind", row["kind"])
+        if kind not in ("geschaeftlich", "privat", "ignorieren"):
+            abort(400)
+        category = (
+            request.form.get("category_new", "").strip()
+            or request.form.get("category", "").strip()
+            or row["category"]
+        )
+        if kind == "privat":
+            category = "Privat"
+        elif kind == "ignorieren":
+            category = "–"
+        db.update_rule(rid, kind, category)
+        if request.form.get("apply_existing") and kind != "ignorieren":
+            db.reclassify_matching_invoices(row["match_type"], row["pattern"], kind, category)
+        return redirect(url_for("rules"))
 
     @app.post("/rules/<int:rid>/delete")
     def rule_delete(rid: int):

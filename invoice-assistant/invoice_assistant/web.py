@@ -61,6 +61,14 @@ def create_app(config: Config) -> Flask:
     def store() -> Store:
         return Store(config)
 
+    # Alt-Duplikate aus Versionen ohne Fingerabdruck-Prüfung einmalig bereinigen
+    try:
+        cleaned = store().cleanup_duplicates()
+        if cleaned:
+            print(f"{cleaned} doppelte(r) Eintrag/Einträge bereinigt.", flush=True)
+    except Exception:
+        pass
+
     # Beim Start still verbinden (lokales Outlook direkt, Graph aus dem Token-Cache) —
     # im Hintergrund, damit die Oberfläche sofort erreichbar ist, auch wenn
     # Outlook langsam startet oder hängt.

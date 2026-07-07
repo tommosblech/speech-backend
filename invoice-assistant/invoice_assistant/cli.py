@@ -152,6 +152,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
         )
         return 1
     store = Store(config)
+    cleaned = store.cleanup_duplicates()
+    if cleaned:
+        print(f"{cleaned} doppelte(r) Eintrag/Einträge bereinigt.")
 
     since = datetime.strptime(args.since, "%Y-%m-%d") if args.since else datetime.now() - timedelta(days=31)
     until = datetime.strptime(args.until, "%Y-%m-%d") if args.until else datetime.now() + timedelta(days=1)

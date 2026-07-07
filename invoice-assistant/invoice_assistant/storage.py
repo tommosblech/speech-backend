@@ -400,6 +400,48 @@ class Store:
             self.db.execute("DELETE FROM pending WHERE id=?", (pending_id,))
             self.db.commit()
 
+    def cleanup_duplicates(self) -> int:
+        """Entfernt Alt-Duplikate (gleicher Absender + Empfangszeit + Dateiname),
+        die vor der Fingerabdruck-Prüfung entstehen konnten. Behalten wird je
+        Gruppe bevorzugt der Eintrag mit abgelegter Beleg-Datei."""
+        from .config import absolute_path
+
+        removed = 0
+        rows = self.db.execute(
+            """SELECT id, sender_email, received_at, filename, stored_path
+               FROM invoices
+               ORDER BY sender_email, received_at, filename,
+                        (stored_path IS NULL), id"""
+        ).fetchall()
+        kept: dict[tuple, sqlite3.Row] = {}
+        for row in rows:
+            key = (row["sender_email"], row["received_at"], row["filename"])
+            if key in kept:
+                keeper = kept[key]
+                if row["stored_path"] and row["stored_path"] != keeper["stored_path"]:
+                    absolute_path(row["stored_path"]).unlink(missing_ok=True)
+                self.db.execute("DELETE FROM invoices WHERE id=?", (row["id"],))
+                removed += 1
+            else:
+                kept[key] = row
+
+        pending_rows = self.db.execute(
+            """SELECT id, sender_email, received_at, filename, file_path
+               FROM pending ORDER BY sender_email, received_at, filename, id"""
+        ).fetchall()
+        seen: set[tuple] = set()
+        for row in pending_rows:
+            key = (row["sender_email"], row["received_at"], row["filename"])
+            if key in seen:
+                absolute_path(row["file_path"]).unlink(missing_ok=True)
+                self.db.execute("DELETE FROM pending WHERE id=?", (row["id"],))
+                removed += 1
+            else:
+                seen.add(key)
+
+        self.db.commit()
+        return removed
+
     def invoices_for_month(self, year: int, month: int, kind: str | None = "geschaeftlich") -> list[sqlite3.Row]:
         start = f"{year:04d}-{month:02d}-01"
         end = f"{year + (month == 12):04d}-{(month % 12) + 1:02d}-01"

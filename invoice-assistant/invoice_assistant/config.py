@@ -37,6 +37,11 @@ class Config:
     data_dir: Path = field(default_factory=lambda: DEFAULT_DATA_DIR)
     categories: list[str] = field(default_factory=lambda: list(DEFAULT_CATEGORIES))
 
+    def __post_init__(self) -> None:
+        # Immer absolute Pfade: relative Pfade interpretiert z. B. Flask' send_file
+        # relativ zum Paketordner statt zum Arbeitsverzeichnis -> Fehler 500.
+        self.data_dir = Path(self.data_dir).expanduser().resolve()
+
     @property
     def source(self) -> str:
         """Effektive Mail-Quelle: bei "auto" entscheidet die vorhandene client_id."""
@@ -80,5 +85,12 @@ def load_config(path: str | Path = "config.json") -> Config:
             cfg.categories = list(raw["categories"])
     cfg.client_id = os.environ.get("OUTLOOK_CLIENT_ID", cfg.client_id)
     cfg.tenant = os.environ.get("OUTLOOK_TENANT", cfg.tenant)
+    cfg.data_dir = Path(cfg.data_dir).expanduser().resolve()  # auch bei data_dir aus config.json
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     return cfg
+
+
+def absolute_path(p: str | Path) -> Path:
+    """Alt gespeicherte relative Pfade (z. B. data/invoices/...) auflösen."""
+    q = Path(p)
+    return q if q.is_absolute() else Path.cwd() / q

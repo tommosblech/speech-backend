@@ -17,7 +17,7 @@ from pathlib import Path
 from fpdf import FPDF
 from pypdf import PdfReader, PdfWriter
 
-from .config import Config
+from .config import Config, absolute_path
 from .report import MONTH_NAMES
 from .storage import Store
 
@@ -129,7 +129,7 @@ def generate_monthly_bundle(
     if with_documents:
         for r in rows:
             label = f"{r['sender_name'] or r['sender_email']} - {r['subject'] or r['filename']}"
-            path = Path(r["stored_path"]) if r["stored_path"] else None
+            path = absolute_path(r["stored_path"]) if r["stored_path"] else None
             try:
                 if path and path.exists() and path.suffix.lower() == ".pdf":
                     writer.append(PdfReader(str(path)))

@@ -21,7 +21,7 @@ import re
 
 from . import updater
 from .bundle import bundle_filename, generate_monthly_bundle
-from .config import Config
+from .config import Config, absolute_path
 from .report import generate_monthly_report
 from .scanner import collect_candidates, make_client
 from .storage import Rule, Store
@@ -379,7 +379,7 @@ def create_app(config: Config) -> Flask:
         item = store().get_pending(pid)
         if not item:
             abort(404)
-        return send_file(item["file_path"], download_name=item["filename"])
+        return send_file(absolute_path(item["file_path"]), download_name=item["filename"])
 
     @app.get("/invoices")
     def invoices():
@@ -398,9 +398,12 @@ def create_app(config: Config) -> Flask:
     @app.get("/invoices/<int:iid>/file")
     def invoice_file(iid: int):
         row = store().get_invoice(iid)
-        if not row or not row["stored_path"] or not Path(row["stored_path"]).exists():
+        if not row or not row["stored_path"]:
             abort(404)
-        return send_file(row["stored_path"], download_name=row["filename"])
+        path = absolute_path(row["stored_path"])
+        if not path.exists():
+            abort(404)
+        return send_file(path, download_name=row["filename"])
 
     @app.get("/rules")
     def rules():

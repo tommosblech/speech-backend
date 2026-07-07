@@ -23,7 +23,7 @@ from . import updater
 from .bundle import bundle_filename, generate_monthly_bundle
 from .config import Config, absolute_path
 from .report import generate_monthly_report
-from .scanner import collect_candidates, effective_date, make_client
+from .scanner import collect_candidates, effective_date, is_receipt_mail, make_client
 from .storage import Rule, Store
 
 
@@ -148,17 +148,27 @@ def create_app(config: Config) -> Flask:
     def scan_worker(since: datetime, until: datetime, query: str | None) -> None:
         db = Store(config)
         log: dict = {
-            "period": f"{since:%d.%m.%Y} bis {(until - timedelta(days=1)):%d.%m.%Y}",
+            "period": (
+                f"{since:%d.%m.%Y} bis {(until - timedelta(days=1)):%d.%m.%Y} "
+                f"(+10 Tage nur für Beleg-Mails)"
+            ),
             "folders": None,
             "mails": [],
         }
         try:
             with state.lock:
                 state.scan = {"status": "running", "progress": "Suche Mails im Postfach …"}
-            messages = client.search_messages(since, until, query=query)
+            # 10 Tage über das Ende hinaus suchen: Beleg-Mails mit eingescannten
+            # Papierbelegen werden oft erst Anfang des Folgemonats verschickt,
+            # gehören aber in den gescannten Monat. Normale Mails aus der
+            # Verlängerung werden übersprungen.
+            messages = client.search_messages(since, until + timedelta(days=10), query=query)
             log["folders"] = getattr(client, "last_folder_stats", None)
             found = auto = asked = 0
             for i, msg in enumerate(messages, 1):
+                received_naive = msg.received.replace(tzinfo=None)
+                if received_naive >= until and not is_receipt_mail(msg):
+                    continue
                 with state.lock:
                     state.scan["progress"] = f"Prüfe Mail {i} von {len(messages)} …"
                 notes: list[str] = []

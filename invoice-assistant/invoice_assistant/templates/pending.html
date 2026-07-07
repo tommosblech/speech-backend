@@ -48,8 +48,11 @@
     <div class="row" style="margin-top:.8rem">
       <button>Zuordnen</button>
       <button class="secondary" formaction="{{ url_for('skip', pid=item['id']) }}"
-              formnovalidate onclick="return confirm('Diesen Eintrag verwerfen? (Keine Rechnung / später erneut scannen)')">
-        Keine Rechnung / verwerfen</button>
+              formnovalidate onclick="return confirm('Diesen Eintrag verwerfen? Er wird gemerkt und taucht bei künftigen Scans nicht mehr auf.')">
+        Verwerfen (nur diese Mail)</button>
+      <button class="secondary" formaction="{{ url_for('skip', pid=item['id']) }}?ignore=1"
+              formnovalidate onclick="return confirm('Verwerfen und den Absender @{{ item['sender_email'].split('@')[-1] }} künftig komplett ignorieren?')">
+        Verwerfen + Absender nie wieder fragen</button>
     </div>
   </form>
 </div>

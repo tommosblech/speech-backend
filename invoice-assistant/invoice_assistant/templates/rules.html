@@ -11,7 +11,7 @@
     <tr>
       <td>{{ row['pattern'] }}</td>
       <td>{{ 'ganze Domain' if row['match_type'] == 'domain' else 'nur diese Adresse' }}</td>
-      <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ 'geschäftlich' if row['kind'] == 'geschaeftlich' else 'privat' }}</span></td>
+      <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ {'geschaeftlich': 'geschäftlich', 'privat': 'privat', 'ignorieren': 'ignorieren'}.get(row['kind'], row['kind']) }}</span></td>
       <td>{{ row['category'] }}</td>
       <td class="num">{{ row['hits'] }}</td>
       <td>

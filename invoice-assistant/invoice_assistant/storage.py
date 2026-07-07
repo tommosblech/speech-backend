@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS invoices (
     UNIQUE(message_id, filename)
 );
 
+CREATE TABLE IF NOT EXISTS dismissed (
+    id INTEGER PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    sender_email TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    subject TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(message_id, filename)
+);
+
 CREATE TABLE IF NOT EXISTS pending (
     id INTEGER PRIMARY KEY,
     message_id TEXT NOT NULL,
@@ -125,12 +136,64 @@ class Store:
 
     # ---------- Rechnungen ----------
 
-    def already_recorded(self, message_id: str, filename: str) -> bool:
+    def _fingerprint_match(
+        self,
+        table: str,
+        message_id: str,
+        filename: str,
+        sender_email: str | None,
+        received_at: datetime | None,
+    ) -> bool:
+        """Duplikat-Prüfung: erst über die Outlook-ID, dann über den stabilen
+        Fingerabdruck Absender+Empfangszeit+Dateiname — der übersteht auch
+        verschobene Mails, deren interne ID sich dabei ändert."""
         row = self.db.execute(
-            "SELECT 1 FROM invoices WHERE message_id=? AND filename=?",
+            f"SELECT 1 FROM {table} WHERE message_id=? AND filename=?",
             (message_id, filename),
         ).fetchone()
-        return row is not None
+        if row:
+            return True
+        if sender_email and received_at:
+            row = self.db.execute(
+                f"SELECT 1 FROM {table} WHERE sender_email=? AND received_at=? AND filename=?",
+                (sender_email, received_at.isoformat(), filename),
+            ).fetchone()
+            if row:
+                return True
+        return False
+
+    def already_recorded(
+        self,
+        message_id: str,
+        filename: str,
+        sender_email: str | None = None,
+        received_at: datetime | None = None,
+    ) -> bool:
+        return self._fingerprint_match("invoices", message_id, filename, sender_email, received_at)
+
+    # ---------- Verworfene Treffer (nie wieder fragen) ----------
+
+    def add_dismissed(
+        self, *, message_id: str, filename: str, sender_email: str,
+        received_at: str, subject: str | None,
+    ) -> None:
+        self.db.execute(
+            """INSERT OR IGNORE INTO dismissed
+               (message_id, filename, sender_email, received_at, subject, created_at)
+               VALUES (?,?,?,?,?,?)""",
+            (message_id, filename, sender_email, received_at, subject,
+             datetime.now().isoformat()),
+        )
+        self.db.commit()
+
+    def is_dismissed(
+        self,
+        message_id: str,
+        filename: str,
+        sender_email: str | None = None,
+        received_at: datetime | None = None,
+    ) -> bool:
+        return self._fingerprint_match("dismissed", message_id, filename, sender_email, received_at)
 
     def record_invoice(
         self,
@@ -219,12 +282,14 @@ class Store:
 
     # ---------- Offene Rückfragen (Warteschlange für die Oberfläche) ----------
 
-    def pending_exists(self, message_id: str, filename: str) -> bool:
-        row = self.db.execute(
-            "SELECT 1 FROM pending WHERE message_id=? AND filename=?",
-            (message_id, filename),
-        ).fetchone()
-        return row is not None
+    def pending_exists(
+        self,
+        message_id: str,
+        filename: str,
+        sender_email: str | None = None,
+        received_at: datetime | None = None,
+    ) -> bool:
+        return self._fingerprint_match("pending", message_id, filename, sender_email, received_at)
 
     def add_pending(
         self,

@@ -156,13 +156,20 @@ def create_app(config: Config) -> Flask:
                 notes: list[str] = []
                 results: list[str] = []
                 for cand in collect_candidates(client, msg, notes=notes):
-                    if db.already_recorded(msg.id, cand.filename) or db.pending_exists(
-                        msg.id, cand.filename
+                    if (
+                        db.already_recorded(msg.id, cand.filename, msg.sender_email, msg.received)
+                        or db.pending_exists(msg.id, cand.filename, msg.sender_email, msg.received)
                     ):
                         results.append(f"„{cand.filename}“: bereits erfasst, übersprungen")
                         continue
-                    found += 1
+                    if db.is_dismissed(msg.id, cand.filename, msg.sender_email, msg.received):
+                        results.append(f"„{cand.filename}“: früher verworfen, übersprungen")
+                        continue
                     rule = db.find_rule(msg.sender_email)
+                    if rule and rule.kind == "ignorieren":
+                        results.append(f"„{cand.filename}“: Absender wird laut Regel ignoriert")
+                        continue
+                    found += 1
                     if rule:
                         stored = None
                         if rule.kind == "geschaeftlich":
@@ -350,7 +357,21 @@ def create_app(config: Config) -> Flask:
 
     @app.post("/pending/<int:pid>/skip")
     def skip(pid: int):
-        store().delete_pending(pid)
+        db = store()
+        item = db.get_pending(pid)
+        if item:
+            # Merken, damit dieselbe Mail bei künftigen Scans nicht erneut auftaucht
+            db.add_dismissed(
+                message_id=item["message_id"],
+                filename=item["filename"],
+                sender_email=item["sender_email"],
+                received_at=item["received_at"],
+                subject=item["subject"],
+            )
+            if request.args.get("ignore"):
+                domain = item["sender_email"].split("@")[-1]
+                db.save_rule(Rule("domain", domain, "ignorieren", "–"))
+            db.delete_pending(pid)
         return redirect(url_for("pending"))
 
     @app.get("/pending/<int:pid>/file")

@@ -90,8 +90,11 @@ def handle_candidate(
     candidate: InvoiceCandidate,
     assume_yes: bool,
 ) -> None:
-    if store.already_recorded(message.id, candidate.filename):
+    if store.already_recorded(message.id, candidate.filename, message.sender_email, message.received):
         print(f"  Bereits erfasst, übersprungen: {candidate.filename}")
+        return
+    if store.is_dismissed(message.id, candidate.filename, message.sender_email, message.received):
+        print(f"  Früher verworfen, übersprungen: {candidate.filename}")
         return
 
     amount = f"{candidate.amount:.2f} {candidate.currency}" if candidate.amount else "unbekannt"
@@ -100,6 +103,9 @@ def handle_candidate(
     print(f"  Betrag: {amount} | Rechnungsnr.: {candidate.invoice_number or 'unbekannt'}")
 
     rule = store.find_rule(message.sender_email)
+    if rule and rule.kind == "ignorieren":
+        print(f"  Absender wird laut Regel ignoriert: {rule.pattern}")
+        return
     if rule:
         print(f"  Gelernte Regel angewendet: {rule.pattern} → {rule.kind}/{rule.category}")
         kind, category = rule.kind, rule.category

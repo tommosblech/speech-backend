@@ -31,8 +31,12 @@ INVOICE_NO_RE = re.compile(
 )
 
 # Beträge: "Gesamtbetrag 119,00 €", "Total: EUR 1.234,56", "$49.00" …
+# Wichtig: "Subtotal"/"Zwischensumme" (Netto-Zeilen) dürfen NICHT matchen,
+# sonst wird auf US-Rechnungen der Betrag ohne Mehrwertsteuer erfasst.
 AMOUNT_RE = re.compile(
-    r"(?:gesamt(?:betrag|summe)?|rechnungsbetrag|zu zahlen|total(?:\s+due)?|amount\s+due|summe)"
+    r"(?:gesamt(?:betrag|summe)?|rechnungsbetrag|endbetrag|brutto(?:betrag)?|zu zahlen"
+    r"|(?<!sub)(?<!zwischen)total(?:\s+due)?|amount\s+(?:due|paid)|grand\s+total"
+    r"|(?<!zwischen)(?<!zwischen-)summe)"
     r"[^\d€$£-]{0,20}"
     r"(?:€|eur|usd|\$|£)?\s*"
     r"(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2})",
@@ -111,17 +115,27 @@ def analyze_text(text: str, filename: str = "") -> tuple[int, dict]:
         score += 1
         fields["invoice_number"] = m.group(1).strip()
 
-    m = AMOUNT_RE.search(text) or ANY_AMOUNT_RE.search(text)
-    if m:
+    # Von allen Summen-Zeilen die höchste nehmen: Subtotal/Netto-Zeilen sind
+    # ausgeschlossen, und der Bruttobetrag ist stets die größte Endsumme.
+    best: tuple[float, re.Match] | None = None
+    for m in AMOUNT_RE.finditer(text):
         amount = _parse_amount(m.group(1))
-        if amount is not None:
-            score += 1
-            fields["amount"] = amount
-            context = text[max(0, m.start() - 5) : m.end() + 5].lower()
-            if "$" in context or "usd" in context:
-                fields["currency"] = "USD"
-            elif "£" in context:
-                fields["currency"] = "GBP"
+        if amount is not None and (best is None or amount > best[0]):
+            best = (amount, m)
+    if best is None:
+        for m in ANY_AMOUNT_RE.finditer(text):
+            amount = _parse_amount(m.group(1))
+            if amount is not None and (best is None or amount > best[0]):
+                best = (amount, m)
+    if best is not None:
+        amount, m = best
+        score += 1
+        fields["amount"] = amount
+        context = text[max(0, m.start() - 5) : m.end() + 5].lower()
+        if "$" in context or "usd" in context:
+            fields["currency"] = "USD"
+        elif "£" in context:
+            fields["currency"] = "GBP"
 
     m = DATE_RE.search(text)
     if m:

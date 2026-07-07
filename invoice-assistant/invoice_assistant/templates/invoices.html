@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <h2 style="margin:.2rem 0 1rem">Erfasste Rechnungen</h2>
+{% if request.args.get('updated') is not none %}
+<div class="card"><p class="ok">✔ {{ request.args.get('updated') }} Betrag/Beträge aus den Belegen aktualisiert.</p></div>
+{% endif %}
 <div class="card">
   <form method="get" class="row">
     <label>Monat<br>

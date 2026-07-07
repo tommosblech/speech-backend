@@ -303,6 +303,35 @@ def create_app(config: Config) -> Flask:
             default_until=default_until,
         )
 
+    @app.post("/reextract")
+    def reextract():
+        """Beträge/Felder aller Rechnungen aus den abgelegten Belegen neu auslesen
+        (nach Verbesserungen an der Erkennung, z. B. Brutto statt Subtotal)."""
+        from .detector import analyze_text, extract_pdf_text
+
+        db = store()
+        changed = 0
+        for row in db.list_invoices(limit=100000):
+            if not row["stored_path"]:
+                continue
+            path = absolute_path(row["stored_path"])
+            if not path.exists():
+                continue
+            if path.suffix.lower() == ".pdf":
+                text = extract_pdf_text(path.read_bytes())
+            else:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            _, fields = analyze_text(text, row["filename"])
+            amount = fields.get("amount")
+            if amount is not None and amount != row["amount"]:
+                db.db.execute(
+                    "UPDATE invoices SET amount=?, currency=? WHERE id=?",
+                    (amount, fields.get("currency", row["currency"] or "EUR"), row["id"]),
+                )
+                changed += 1
+        db.db.commit()
+        return redirect(url_for("invoices", updated=changed))
+
     @app.post("/reset")
     def reset():
         keep_rules = request.form.get("mode") != "all"

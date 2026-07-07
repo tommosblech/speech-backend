@@ -112,6 +112,16 @@
 </div>
 
 <div class="card">
+  <h2>Wartung</h2>
+  <p class="muted">Liest Betrag und Währung aller erfassten Rechnungen aus den abgelegten
+     Belegen neu aus — nützlich, wenn die Erkennung verbessert wurde (z. B. Bruttobetrag
+     statt Netto-„Subtotal" bei US-Rechnungen).</p>
+  <form method="post" action="{{ url_for('reextract') }}">
+    <button class="secondary">Beträge aus Belegen neu auslesen</button>
+  </form>
+</div>
+
+<div class="card">
   <h2>Zurücksetzen</h2>
   <p class="muted">Löscht alle erfassten Rechnungen, Belege, offenen Fragen und Berichte für einen
      kompletten Neuanfang. <b>Empfohlen:</b> die gelernten Regeln behalten — dann sortiert der neue

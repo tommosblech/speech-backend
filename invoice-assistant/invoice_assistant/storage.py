@@ -498,6 +498,23 @@ class Store:
         self.db.commit()
         return removed
 
+    def reset(self, *, keep_rules: bool = True) -> None:
+        """Alle erfassten Daten löschen für einen frischen Scan.
+
+        keep_rules=True behält die gelernten Zuordnungsregeln (empfohlen),
+        sodass der neue Scan bekannte Absender wieder automatisch einsortiert.
+        """
+        import shutil
+
+        self.db.execute("DELETE FROM invoices")
+        self.db.execute("DELETE FROM pending")
+        self.db.execute("DELETE FROM dismissed")
+        if not keep_rules:
+            self.db.execute("DELETE FROM rules")
+        self.db.commit()
+        for folder in (self.config.invoices_dir, self.config.pending_dir, self.config.reports_dir):
+            shutil.rmtree(folder, ignore_errors=True)
+
     def invoices_for_month(self, year: int, month: int, kind: str | None = "geschaeftlich") -> list[sqlite3.Row]:
         start = f"{year:04d}-{month:02d}-01"
         end = f"{year + (month == 12):04d}-{(month % 12) + 1:02d}-01"

@@ -303,6 +303,15 @@ def create_app(config: Config) -> Flask:
             default_until=default_until,
         )
 
+    @app.post("/reset")
+    def reset():
+        keep_rules = request.form.get("mode") != "all"
+        store().reset(keep_rules=keep_rules)
+        with state.lock:
+            state.scan = {"status": "idle"}
+            state.scan_log = None
+        return redirect(url_for("index"))
+
     @app.get("/scanlog")
     def scanlog():
         with state.lock:

@@ -112,6 +112,21 @@
 </div>
 
 <div class="card">
+  <h2>Zurücksetzen</h2>
+  <p class="muted">Löscht alle erfassten Rechnungen, Belege, offenen Fragen und Berichte für einen
+     kompletten Neuanfang. <b>Empfohlen:</b> die gelernten Regeln behalten — dann sortiert der neue
+     Scan bekannte Absender wieder automatisch ein und fragt nur bei Neuem.</p>
+  <form method="post" action="{{ url_for('reset') }}" class="row">
+    <button class="secondary"
+            onclick="return confirm('Alle Rechnungen, Belege und Berichte löschen? Die gelernten Regeln bleiben erhalten. Das kann nicht rückgängig gemacht werden.')">
+      Daten löschen, Regeln behalten</button>
+    <button class="danger" name="mode" value="all"
+            onclick="return confirm('WIRKLICH ALLES löschen — auch alle gelernten Regeln? Der Assistent fängt komplett bei null an. Das kann nicht rückgängig gemacht werden.')">
+      Alles löschen (auch Regeln)</button>
+  </form>
+</div>
+
+<div class="card">
   <h2>So arbeitet der Assistent</h2>
   <ol class="muted">
     <li><b>Verbinden</b> — mit dem lokalen Outlook oder per Microsoft-Anmeldung (nur Lesezugriff).</li>

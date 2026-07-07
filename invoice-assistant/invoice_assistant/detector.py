@@ -33,15 +33,34 @@ INVOICE_NO_RE = re.compile(
 # Beträge: "Gesamtbetrag 119,00 €", "Total: EUR 1.234,56", "$49.00" …
 # Wichtig: "Subtotal"/"Zwischensumme" (Netto-Zeilen) dürfen NICHT matchen,
 # sonst wird auf US-Rechnungen der Betrag ohne Mehrwertsteuer erfasst.
-AMOUNT_RE = re.compile(
-    r"(?:gesamt(?:betrag|summe)?|rechnungsbetrag|endbetrag|brutto(?:betrag)?|zu zahlen"
-    r"|(?<!sub)(?<!zwischen)total(?:\s+due)?|amount\s+(?:due|paid)|grand\s+total"
-    r"|(?<!zwischen)(?<!zwischen-)summe)"
-    r"[^\d€$£-]{0,20}"
-    r"(?:€|eur|usd|\$|£)?\s*"
-    r"(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2})",
-    re.IGNORECASE,
-)
+#
+# Prioritätsstufen: Der ZAHLBETRAG (z. B. "Rechnungsendbetrag" bei EnBW nach
+# Abzug der Abschläge) schlägt Gesamt-/Bruttobeträge, diese schlagen die
+# generischen Summenzeilen. Innerhalb einer Stufe gewinnt der höchste Wert
+# (Brutto >= Netto). Ohne die Stufen würde auf Jahresabrechnungen die große
+# Netto-/Brutto-Jahressumme statt des zu zahlenden Betrags erfasst.
+_AMOUNT_GAP = r"[^\d€$£-]{0,25}(?:€|eur|usd|\$|£)?\s*"
+_AMOUNT_NUM = r"(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2})"
+AMOUNT_TIERS = [
+    re.compile(
+        r"(?:rechnungs-?endbetrag|zu zahlen(?:der betrag)?|zahlbetrag"
+        r"|noch zu zahlen|amount\s+due|verbleibende forderung)"
+        + _AMOUNT_GAP + _AMOUNT_NUM,
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:rechnungsbetrag|gesamtbetrag|endbetrag|brutto(?:betrag)?"
+        r"|grand\s+total|amount\s+paid|total\s+due)"
+        + _AMOUNT_GAP + _AMOUNT_NUM,
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:gesamt(?:summe)?|(?<!sub)(?<!zwischen)total"
+        r"|(?<!zwischen)(?<!zwischen-)summe)"
+        + _AMOUNT_GAP + _AMOUNT_NUM,
+        re.IGNORECASE,
+    ),
+]
 ANY_AMOUNT_RE = re.compile(r"(?:€|eur|usd|\$|£)\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})", re.IGNORECASE)
 
 DATE_RE = re.compile(
@@ -115,13 +134,16 @@ def analyze_text(text: str, filename: str = "") -> tuple[int, dict]:
         score += 1
         fields["invoice_number"] = m.group(1).strip()
 
-    # Von allen Summen-Zeilen die höchste nehmen: Subtotal/Netto-Zeilen sind
-    # ausgeschlossen, und der Bruttobetrag ist stets die größte Endsumme.
+    # Erste Prioritätsstufe mit Treffern gewinnt; innerhalb der Stufe der
+    # höchste Wert (Brutto >= Netto). Fallback: größter Betrag mit Währung.
     best: tuple[float, re.Match] | None = None
-    for m in AMOUNT_RE.finditer(text):
-        amount = _parse_amount(m.group(1))
-        if amount is not None and (best is None or amount > best[0]):
-            best = (amount, m)
+    for tier in AMOUNT_TIERS:
+        for m in tier.finditer(text):
+            amount = _parse_amount(m.group(1))
+            if amount is not None and (best is None or amount > best[0]):
+                best = (amount, m)
+        if best is not None:
+            break
     if best is None:
         for m in ANY_AMOUNT_RE.finditer(text):
             amount = _parse_amount(m.group(1))

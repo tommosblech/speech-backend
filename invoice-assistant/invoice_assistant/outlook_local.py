@@ -87,8 +87,15 @@ class LocalOutlookClient:
     def authenticate(self, device_code_callback=None) -> str:
         ns = self._namespace()
         try:
-            first = ns.Accounts.Item(1)
-            return str(first.SmtpAddress or first.DisplayName)
+            names = []
+            for i in range(1, ns.Accounts.Count + 1):
+                acc = ns.Accounts.Item(i)
+                names.append(str(acc.SmtpAddress or acc.DisplayName))
+            if not names:
+                raise ValueError("keine Konten")
+            if len(names) == 1:
+                return names[0]
+            return f"{names[0]} (+{len(names) - 1} weitere: {', '.join(names[1:])})"
         except Exception:
             return f"Lokales Outlook ({ns.CurrentUser.Name})"
 

@@ -10,6 +10,7 @@ dort klassifiziert — die Antwort wird als Regel gelernt.
 from __future__ import annotations
 
 import threading
+import time
 import webbrowser
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -63,6 +64,30 @@ def create_app(config: Config) -> Flask:
     app = Flask(__name__)
     state = AppState()
     client = make_client(config)
+
+    @app.errorhandler(500)
+    def internal_error(exc):
+        # Häufigste Ursache: nach einem Update lief noch ein ALTER Prozess mit
+        # ALTEN Programmdateien weiter, während neue Seiten schon auf neue,
+        # dem alten Prozess unbekannte Funktionen verweisen (BuildError u. Ä.).
+        # Ein sauberer Neustart behebt das zuverlässig.
+        html = (
+            "<!doctype html><html lang='de'><meta charset='utf-8'>"
+            "<body style='font-family:sans-serif;margin:3rem;max-width:40rem'>"
+            "<h2>⚠ Etwas ist schiefgelaufen</h2>"
+            "<p>Das deutet meist darauf hin, dass noch ein <b>alter Prozess</b> des "
+            "Assistenten im Hintergrund läuft (z. B. von vor einem Update).</p>"
+            "<p><b>So behebst du es:</b></p>"
+            "<ol>"
+            "<li>Task-Manager öffnen (Strg+Umschalt+Esc)</li>"
+            "<li>Bei „Prozesse“ alle Einträge mit „Python“ beenden</li>"
+            "<li>Diesen Browser-Tab schließen</li>"
+            "<li>Den Assistenten über die Verknüpfung neu starten</li>"
+            "</ol>"
+            f"<p style='color:#888;font-size:.85rem'>Technische Details: {type(exc).__name__}: {exc}</p>"
+            "</body></html>"
+        )
+        return html, 500
 
     def store() -> Store:
         return Store(config)
@@ -712,10 +737,19 @@ def run(config: Config, port: int = 8321, open_browser: bool = True) -> int:
     app = create_app(config)
     if open_browser and not os.environ.get("IA_RESTARTED"):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    try:
-        app.run(host="127.0.0.1", port=port, debug=False)
-    except OSError:
-        # Läuft bereits (Port belegt) — der Browser wurde geöffnet und zeigt
-        # die laufende Instanz; diese Zweitinstanz beendet sich still.
-        print("Der Rechnungsassistent läuft bereits — öffne die bestehende Oberfläche.")
+    # Nach einem Update-Neustart kann der alte Prozess den Port kurz noch
+    # belegt halten (Betriebssystem gibt ihn nicht sofort frei) — das sieht
+    # sonst wie "läuft bereits" aus, obwohl der Vorgänger schon beendet ist.
+    # Ein paar Versuche mit kurzer Pause verhindern, dass der Neustart dann
+    # fälschlich klein beigibt und gar kein Server mehr läuft.
+    attempts = 5 if os.environ.get("IA_RESTARTED") else 1
+    for attempt in range(1, attempts + 1):
+        try:
+            app.run(host="127.0.0.1", port=port, debug=False)
+            return 0
+        except OSError:
+            if attempt >= attempts:
+                print("Der Rechnungsassistent läuft bereits — öffne die bestehende Oberfläche.")
+                return 0
+            time.sleep(1.0)
     return 0

@@ -32,12 +32,13 @@
 <div class="card" style="overflow-x:auto">
   {% if rows %}
   <table>
-    <tr><th>Datum</th><th>Absender</th><th>Betreff/Datei</th><th>Kategorie</th><th>Art</th><th class="num">Betrag</th><th>Beleg</th><th></th></tr>
+    <tr><th>Datum</th><th>Absender</th><th>Betreff/Datei</th><th>Rechnungsnr.</th><th>Kategorie</th><th>Art</th><th class="num">Betrag</th><th>Beleg</th><th></th></tr>
     {% for row in rows %}
     <tr>
       <td>{{ (row['invoice_date'] or row['received_at'])|datum }}</td>
       <td>{{ row['sender_name'] or row['sender_email'] }}</td>
       <td>{{ row['subject'] or row['filename'] }}</td>
+      <td>{{ row['invoice_number'] or '–' }}</td>
       <td>{{ row['category'] }}</td>
       <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ 'geschäftlich' if row['kind'] == 'geschaeftlich' else 'privat' }}</span></td>
       <td class="num">{{ row|euro }}</td>

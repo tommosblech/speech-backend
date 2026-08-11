@@ -42,7 +42,9 @@
       <td>{{ row['category'] }}</td>
       <td><span class="pill {{ 'g' if row['kind'] == 'geschaeftlich' else 'p' }}">{{ 'geschäftlich' if row['kind'] == 'geschaeftlich' else 'privat' }}</span></td>
       <td class="num">{{ row|euro }}</td>
-      <td>{% if row['stored_path'] %}<a href="{{ url_for('invoice_file', iid=row['id']) }}" target="_blank">öffnen</a>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td>{% if row['stored_path'] %}<a href="{{ url_for('invoice_file', iid=row['id']) }}" target="_blank">öffnen</a>
+        · <a href="{{ url_for('invoice_text', iid=row['id']) }}" target="_blank" title="Ausgelesenen Rohtext zeigen (Fehlersuche)">Text</a>
+        {% else %}<span class="muted">–</span>{% endif %}</td>
       <td style="white-space:nowrap">
         <form method="post" action="{{ url_for('invoice_delete', iid=row['id']) }}" style="display:inline">
           <input type="hidden" name="month" value="{{ sel_month }}">

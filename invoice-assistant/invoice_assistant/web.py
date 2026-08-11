@@ -14,7 +14,7 @@ import webbrowser
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, url_for
 
 import os
 import re
@@ -500,6 +500,28 @@ def create_app(config: Config) -> Flask:
             abort(404)
         return send_file(absolute_path(item["file_path"]), download_name=item["filename"])
 
+    @app.get("/pending/<int:pid>/text")
+    def pending_text(pid: int):
+        """Wie /invoices/<id>/text, nur für noch unklassifizierte Belege."""
+        from .detector import extract_pdf_text
+
+        item = store().get_pending(pid)
+        if not item:
+            abort(404)
+        path = absolute_path(item["file_path"])
+        if not path.exists():
+            abort(404)
+        if path.suffix.lower() == ".pdf":
+            text = extract_pdf_text(path.read_bytes())
+        else:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        marked = text.replace(" ", "·").replace("\n", "⏎\n").replace("\t", "→")
+        body = (
+            f"Ausgelesener Text zu: {item['filename']}\n"
+            f"(· = Leerzeichen, ⏎ = Zeilenumbruch, → = Tab)\n{'=' * 70}\n\n{marked}"
+        )
+        return Response(body, mimetype="text/plain; charset=utf-8")
+
     @app.get("/invoices")
     def invoices():
         db = store()
@@ -525,6 +547,33 @@ def create_app(config: Config) -> Flask:
         if not path.exists():
             abort(404)
         return send_file(path, download_name=row["filename"])
+
+    @app.get("/invoices/<int:iid>/text")
+    def invoice_text(iid: int):
+        """Zeigt den ROHEN Text, den der Assistent aus dem Beleg ausliest —
+        zur Fehlersuche, wenn Betrag/Rechnungsnummer nicht stimmen: hier
+        sichtbar, exakt wie das Erkennungsprogramm ihn sieht (inkl.
+        Zeilenumbrüchen), nicht wie er im PDF-Betrachter aussieht."""
+        from .detector import extract_pdf_text
+
+        row = store().get_invoice(iid)
+        if not row or not row["stored_path"]:
+            abort(404)
+        path = absolute_path(row["stored_path"])
+        if not path.exists():
+            abort(404)
+        if path.suffix.lower() == ".pdf":
+            text = extract_pdf_text(path.read_bytes())
+        else:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        marked = text.replace(" ", "·").replace("\n", "⏎\n").replace("\t", "→")
+        body = (
+            f"Ausgelesener Text zu: {row['filename']}\n"
+            f"(· = Leerzeichen, ⏎ = Zeilenumbruch, → = Tab — damit unsichtbare\n"
+            f" Zeichen rund um die Rechnungsnummer sichtbar werden)\n"
+            f"{'=' * 70}\n\n{marked}"
+        )
+        return Response(body, mimetype="text/plain; charset=utf-8")
 
     @app.post("/invoices/<int:iid>/delete")
     def invoice_delete(iid: int):

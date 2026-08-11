@@ -16,6 +16,7 @@
       Aus Beleg-Mail „{{ item['subject'] }}“ · Buchungsmonat: <b>{{ item['received_at'][5:7] }}/{{ item['received_at'][0:4] }}</b>
       · Betrag: {{ item|euro }}
       · <a href="{{ url_for('pending_file', pid=item['id']) }}" target="_blank">Beleg ansehen</a>
+      · <a href="{{ url_for('pending_text', pid=item['id']) }}" target="_blank">Text</a>
     </span>
   </p>
   {% else %}
@@ -27,6 +28,7 @@
       · Betrag: {{ item|euro }}
       · Rechnungsnr.: {{ item['invoice_number'] or '–' }}
       · <a href="{{ url_for('pending_file', pid=item['id']) }}" target="_blank">Rechnung ansehen</a>
+      · <a href="{{ url_for('pending_text', pid=item['id']) }}" target="_blank">Text</a>
     </span>
   </p>
   {% endif %}

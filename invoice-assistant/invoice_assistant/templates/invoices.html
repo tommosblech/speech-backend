@@ -21,6 +21,13 @@
     </label>
     <button>Filtern</button>
   </form>
+  <form method="get" class="row" style="margin-top:.7rem">
+    <label>Suche (durchsucht <b>alle</b> Rechnungen, ignoriert Monat/Art-Filter)<br>
+      <input type="text" name="q" value="{{ sel_q }}" placeholder="Absender, Betreff, Dateiname oder Rechnungsnummer" style="width:22rem">
+    </label>
+    <button class="secondary">Suchen</button>
+    {% if sel_q %}<a href="{{ url_for('invoices') }}" class="btn secondary" style="align-self:end">Suche zurücksetzen</a>{% endif %}
+  </form>
 </div>
 <div class="card" style="overflow-x:auto">
   {% if rows %}

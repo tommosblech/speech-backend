@@ -495,13 +495,15 @@ def create_app(config: Config) -> Flask:
         db = store()
         month = request.args.get("month") or None
         kind = request.args.get("kind") or None
+        search = request.args.get("q") or None
         return render_template(
             "invoices.html",
             page="invoices",
-            rows=db.list_invoices(month=month, kind=kind),
+            rows=db.list_invoices(month=month, kind=kind, search=search),
             months=db.months_with_invoices(),
             sel_month=month or "",
             sel_kind=kind or "",
+            sel_q=search or "",
         )
 
     @app.get("/invoices/<int:iid>/file")

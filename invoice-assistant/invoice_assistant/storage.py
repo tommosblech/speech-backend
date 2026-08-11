@@ -334,8 +334,29 @@ class Store:
         self.db.execute("DELETE FROM invoices WHERE id=?", (invoice_id,))
         self.db.commit()
 
-    def list_invoices(self, month: str | None = None, kind: str | None = None, limit: int = 500) -> list[sqlite3.Row]:
-        """Rechnungen für die Oberfläche; month als 'YYYY-MM'."""
+    def list_invoices(
+        self,
+        month: str | None = None,
+        kind: str | None = None,
+        limit: int = 500,
+        search: str | None = None,
+    ) -> list[sqlite3.Row]:
+        """Rechnungen für die Oberfläche; month als 'YYYY-MM'.
+
+        search überschreibt month/kind (ignoriert also aktive Filter) und
+        durchsucht ALLE Rechnungen über Absender/Betreff/Dateiname/
+        Rechnungsnummer — gedacht, um eine vermisste Rechnung unabhängig
+        von zufällig falsch eingestellten Filtern wiederzufinden.
+        """
+        if search and search.strip():
+            like = f"%{search.strip()}%"
+            sql = (
+                "SELECT * FROM invoices WHERE "
+                "sender_name LIKE ? OR sender_email LIKE ? OR subject LIKE ? "
+                "OR filename LIKE ? OR invoice_number LIKE ? "
+                "ORDER BY received_at DESC LIMIT ?"
+            )
+            return self.db.execute(sql, [like, like, like, like, like, limit]).fetchall()
         sql = "SELECT * FROM invoices WHERE 1=1"
         params: list = []
         if month:

@@ -350,8 +350,10 @@ def create_app(config: Config) -> Flask:
 
     @app.post("/reextract")
     def reextract():
-        """Beträge/Felder aller Rechnungen aus den abgelegten Belegen neu auslesen
-        (nach Verbesserungen an der Erkennung, z. B. Brutto statt Subtotal)."""
+        """Betrag/Rechnungsnummer aller Rechnungen aus den abgelegten Belegen neu
+        auslesen (nach Verbesserungen an der Erkennung, z. B. Brutto statt
+        Subtotal, oder eine zuvor an einem Zeilenumbruch abgeschnittene
+        Rechnungsnummer wie „NAPC5EIA" statt „NAPC5EIA-0007")."""
         from .detector import analyze_text, extract_pdf_text
 
         db = store()
@@ -368,10 +370,18 @@ def create_app(config: Config) -> Flask:
                 text = path.read_text(encoding="utf-8", errors="replace")
             _, fields = analyze_text(text, row["filename"])
             amount = fields.get("amount")
+            invoice_number = fields.get("invoice_number")
+            updates = {}
             if amount is not None and amount != row["amount"]:
+                updates["amount"] = amount
+                updates["currency"] = fields.get("currency", row["currency"] or "EUR")
+            if invoice_number and invoice_number != row["invoice_number"]:
+                updates["invoice_number"] = invoice_number
+            if updates:
+                set_clause = ", ".join(f"{k}=?" for k in updates)
                 db.db.execute(
-                    "UPDATE invoices SET amount=?, currency=? WHERE id=?",
-                    (amount, fields.get("currency", row["currency"] or "EUR"), row["id"]),
+                    f"UPDATE invoices SET {set_clause} WHERE id=?",
+                    [*updates.values(), row["id"]],
                 )
                 changed += 1
         db.db.commit()

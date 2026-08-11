@@ -156,17 +156,23 @@ def create_app(config: Config) -> Flask:
         an Ort und Stelle. Läuft innerhalb einer eigenen try/except-Hülle im
         Aufrufer, damit ein Problem bei EINER Mail nicht den ganzen Scan stoppt."""
         for cand in collect_candidates(client, msg, notes=notes):
-            if (
-                db.already_recorded(
-                    msg.id, cand.filename, msg.sender_email, eff,
-                    cand.invoice_number, cand.amount,
-                )
-                or db.pending_exists(
-                    msg.id, cand.filename, msg.sender_email, eff,
-                    cand.invoice_number, cand.amount,
-                )
+            # Getrennt melden: "bereits erfasst" (fertig in Rechnungen) vs.
+            # "wartet noch" (in Offene Fragen) sehen im Protokoll gleich aus,
+            # bedeuten aber Unterschiedliches — bei Verwechslung wirkt eine
+            # unklassifizierte Rechnung fälschlich wie "erledigt".
+            if db.already_recorded(
+                msg.id, cand.filename, msg.sender_email, eff,
+                cand.invoice_number, cand.amount,
             ):
-                results.append(f"„{cand.filename}“: bereits erfasst, übersprungen")
+                results.append(f"„{cand.filename}“: bereits in Rechnungen erfasst, übersprungen")
+                continue
+            if db.pending_exists(
+                msg.id, cand.filename, msg.sender_email, eff,
+                cand.invoice_number, cand.amount,
+            ):
+                results.append(
+                    f"„{cand.filename}“: wartet bereits unter „Offene Fragen“ auf Zuordnung"
+                )
                 continue
             if db.is_dismissed(msg.id, cand.filename, msg.sender_email, eff):
                 results.append(f"„{cand.filename}“: früher verworfen, übersprungen")

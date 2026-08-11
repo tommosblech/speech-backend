@@ -182,9 +182,13 @@ def cmd_scan(args: argparse.Namespace) -> int:
     print("\nSchritt 3/4 – Prüfe Anhänge und Mailtexte auf Rechnungen.")
     found = 0
     for message in messages:
-        for cand in collect_candidates(client, message):
-            found += 1
-            handle_candidate(store, message, cand, args.yes)
+        try:
+            for cand in collect_candidates(client, message):
+                found += 1
+                handle_candidate(store, message, cand, args.yes)
+        except Exception as exc:
+            # Eine einzelne kaputte Mail darf den restlichen Scan nicht abbrechen.
+            print(f"  ⚠ Mail „{message.subject}“ konnte nicht verarbeitet werden ({exc}) — übersprungen.")
 
     print(f"\nSchritt 4/4 – Fertig: {found} Rechnung(en) verarbeitet.")
     print("Tipp: Monatsbericht mit »python -m invoice_assistant report --month YYYY-MM« erzeugen.")

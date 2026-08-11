@@ -23,10 +23,21 @@ INVOICE_KEYWORDS = [
     "zahlungsbeleg",
     "gutschrift",
     "billing statement",
+    "beleg",
+    "kassenbon",
+    "faktura",
+    "tax invoice",
+    "statement",
+    "facture",
+    "fattura",
+    "factura",
 ]
 
 INVOICE_NO_RE = re.compile(
-    r"(?:rechnungs?-?\s*(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#))\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-/_.]{2,30})",
+    r"(?:rechnungs?-?\s*(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#)"
+    r"|beleg-?\s*(?:nummer|nr\.?)|referenz-?\s*(?:nummer|nr\.?)"
+    r"|bestell-?\s*(?:nummer|nr\.?)|order\s*(?:id|no\.?|number|#))"
+    r"\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-/_.]{2,30})",
     re.IGNORECASE,
 )
 
@@ -40,8 +51,11 @@ INVOICE_NO_RE = re.compile(
 # Summenzeilen. Innerhalb einer Stufe gewinnt der höchste Wert (Brutto >=
 # Netto). Ohne die Stufen würde auf Jahresabrechnungen die große Netto-/
 # Brutto-Jahressumme statt des zu zahlenden Betrags erfasst.
-_AMOUNT_GAP = r"[^\d€$£-]{0,25}(?:€|eur|usd|\$|£)?\s*"
-_AMOUNT_NUM = r"(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2})"
+_AMOUNT_GAP = r"[^\d€$£-]{0,25}(?:€|eur|usd|\$|£|chf)?\s*"
+# Nachkommastellen sind optional (runde Beträge wie "50 €" ohne Cent), aber
+# (?<!\d)/(?!\d) verhindern, dass dabei ein Teil einer längeren Zahl (z. B.
+# einer Kunden- oder Telefonnummer) fälschlich als Betrag herausgerissen wird.
+_AMOUNT_NUM = r"(?<!\d)(\d{1,3}(?:[.,\s]\d{3})*(?:[.,]\d{2})?)(?!\d)"
 AMOUNT_TIERS = [
     [
         re.compile(
@@ -74,7 +88,7 @@ AMOUNT_TIERS = [
         ),
     ],
 ]
-ANY_AMOUNT_RE = re.compile(r"(?:€|eur|usd|\$|£)\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})", re.IGNORECASE)
+ANY_AMOUNT_RE = re.compile(r"(?:€|eur|usd|\$|£|chf)\s*" + _AMOUNT_NUM, re.IGNORECASE)
 
 DATE_RE = re.compile(
     r"(?:rechnungsdatum|invoice date|datum|date)\s*[:]?\s*"
@@ -103,6 +117,16 @@ class InvoiceCandidate:
 def extract_pdf_text(data: bytes) -> str:
     try:
         reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            # Viele "geschützte" Rechnungs-PDFs (z. B. mit Geburtsdatum/PLZ
+            # als Kennwort für Freiberufler-Rechnungen) verwenden nur ein
+            # Besitzer-Kennwort mit leerem Nutzer-Kennwort — die lassen sich
+            # ohne Nutzereingabe öffnen. Echt kennwortgeschützte PDFs bleiben
+            # unlesbar (fällt dann auf den Dateinamen-Bonus zurück).
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception:
         return ""
@@ -172,6 +196,8 @@ def analyze_text(text: str, filename: str = "") -> tuple[int, dict]:
             fields["currency"] = "USD"
         elif "£" in context:
             fields["currency"] = "GBP"
+        elif "chf" in context:
+            fields["currency"] = "CHF"
 
     m = DATE_RE.search(text)
     if m:

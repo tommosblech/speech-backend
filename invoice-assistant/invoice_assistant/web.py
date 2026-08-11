@@ -151,6 +151,75 @@ def create_app(config: Config) -> Flask:
 
     # ---------- Scan ----------
 
+    def _process_message(db, msg, eff, notes, results, counters):
+        """Wertet die Kandidaten einer Mail aus; erhöht counters (found/auto/asked)
+        an Ort und Stelle. Läuft innerhalb einer eigenen try/except-Hülle im
+        Aufrufer, damit ein Problem bei EINER Mail nicht den ganzen Scan stoppt."""
+        for cand in collect_candidates(client, msg, notes=notes):
+            if (
+                db.already_recorded(
+                    msg.id, cand.filename, msg.sender_email, eff,
+                    cand.invoice_number, cand.amount,
+                )
+                or db.pending_exists(
+                    msg.id, cand.filename, msg.sender_email, eff,
+                    cand.invoice_number, cand.amount,
+                )
+            ):
+                results.append(f"„{cand.filename}“: bereits erfasst, übersprungen")
+                continue
+            if db.is_dismissed(msg.id, cand.filename, msg.sender_email, eff):
+                results.append(f"„{cand.filename}“: früher verworfen, übersprungen")
+                continue
+            # Bei eigenen Beleg-Mails keine Absender-Regeln: jeder Anhang
+            # wird einzeln zugeordnet (Absender bist du selbst).
+            rule = None if cand.source == "beleg" else db.find_rule(msg.sender_email)
+            if rule and rule.kind == "ignorieren":
+                results.append(f"„{cand.filename}“: Absender wird laut Regel ignoriert")
+                continue
+            counters["found"] += 1
+            if rule:
+                stored = None
+                if rule.kind == "geschaeftlich":
+                    stored = db.store_file(eff, msg.sender_email, cand.filename, cand.content)
+                db.record_invoice(
+                    message_id=msg.id,
+                    filename=cand.filename,
+                    sender_email=msg.sender_email,
+                    sender_name=msg.sender_name,
+                    subject=msg.subject,
+                    received_at=eff,
+                    invoice_number=cand.invoice_number,
+                    invoice_date=cand.invoice_date,
+                    amount=cand.amount,
+                    currency=cand.currency,
+                    kind=rule.kind,
+                    category=rule.category,
+                    stored_path=stored,
+                )
+                counters["auto"] += 1
+                results.append(f"„{cand.filename}“: automatisch → {rule.kind}/{rule.category}")
+            else:
+                db.add_pending(
+                    message_id=msg.id,
+                    filename=cand.filename,
+                    sender_email=msg.sender_email,
+                    sender_name=msg.sender_name,
+                    subject=msg.subject,
+                    received_at=eff,
+                    invoice_number=cand.invoice_number,
+                    invoice_date=cand.invoice_date,
+                    amount=cand.amount,
+                    currency=cand.currency,
+                    content=cand.content,
+                    origin=cand.source if cand.source == "beleg" else "",
+                )
+                counters["asked"] += 1
+                if cand.source == "beleg":
+                    results.append(f"„{cand.filename}“: Beleg vorgemerkt (Buchungsmonat {eff:%m/%Y})")
+                else:
+                    results.append(f"„{cand.filename}“: als offene Frage vorgemerkt")
+
     def scan_worker(since: datetime, until: datetime, query: str | None) -> None:
         db = Store(config)
         log: dict = {
@@ -170,7 +239,7 @@ def create_app(config: Config) -> Flask:
             # Verlängerung werden übersprungen.
             messages = client.search_messages(since, until + timedelta(days=10), query=query)
             log["folders"] = getattr(client, "last_folder_stats", None)
-            found = auto = asked = 0
+            counters = {"found": 0, "auto": 0, "asked": 0}
             for i, msg in enumerate(messages, 1):
                 received_naive = msg.received.replace(tzinfo=None)
                 if received_naive >= until and not (
@@ -182,75 +251,16 @@ def create_app(config: Config) -> Flask:
                     state.scan["progress"] = f"Prüfe Mail {i} von {len(messages)} …"
                 notes: list[str] = []
                 results: list[str] = []
-                eff = effective_date(msg, config.vormonat_senders)  # ggf. Vormonat statt Empfangszeit
-                for cand in collect_candidates(client, msg, notes=notes):
-                    if (
-                        db.already_recorded(
-                            msg.id, cand.filename, msg.sender_email, eff,
-                            cand.invoice_number, cand.amount,
-                        )
-                        or db.pending_exists(
-                            msg.id, cand.filename, msg.sender_email, eff,
-                            cand.invoice_number, cand.amount,
-                        )
-                    ):
-                        results.append(f"„{cand.filename}“: bereits erfasst, übersprungen")
-                        continue
-                    if db.is_dismissed(msg.id, cand.filename, msg.sender_email, eff):
-                        results.append(f"„{cand.filename}“: früher verworfen, übersprungen")
-                        continue
-                    # Bei eigenen Beleg-Mails keine Absender-Regeln: jeder Anhang
-                    # wird einzeln zugeordnet (Absender bist du selbst).
-                    rule = None if cand.source == "beleg" else db.find_rule(msg.sender_email)
-                    if rule and rule.kind == "ignorieren":
-                        results.append(f"„{cand.filename}“: Absender wird laut Regel ignoriert")
-                        continue
-                    found += 1
-                    if rule:
-                        stored = None
-                        if rule.kind == "geschaeftlich":
-                            stored = db.store_file(
-                                eff, msg.sender_email, cand.filename, cand.content
-                            )
-                        db.record_invoice(
-                            message_id=msg.id,
-                            filename=cand.filename,
-                            sender_email=msg.sender_email,
-                            sender_name=msg.sender_name,
-                            subject=msg.subject,
-                            received_at=eff,
-                            invoice_number=cand.invoice_number,
-                            invoice_date=cand.invoice_date,
-                            amount=cand.amount,
-                            currency=cand.currency,
-                            kind=rule.kind,
-                            category=rule.category,
-                            stored_path=stored,
-                        )
-                        auto += 1
-                        results.append(f"„{cand.filename}“: automatisch → {rule.kind}/{rule.category}")
-                    else:
-                        db.add_pending(
-                            message_id=msg.id,
-                            filename=cand.filename,
-                            sender_email=msg.sender_email,
-                            sender_name=msg.sender_name,
-                            subject=msg.subject,
-                            received_at=eff,
-                            invoice_number=cand.invoice_number,
-                            invoice_date=cand.invoice_date,
-                            amount=cand.amount,
-                            currency=cand.currency,
-                            content=cand.content,
-                            origin=cand.source if cand.source == "beleg" else "",
-                        )
-                        asked += 1
-                        if cand.source == "beleg":
-                            results.append(
-                                f"„{cand.filename}“: Beleg vorgemerkt (Buchungsmonat {eff:%m/%Y})"
-                            )
-                        else:
-                            results.append(f"„{cand.filename}“: als offene Frage vorgemerkt")
+                try:
+                    eff = effective_date(msg, config.vormonat_senders)  # ggf. Vormonat statt Empfangszeit
+                    _process_message(db, msg, eff, notes, results, counters)
+                except Exception as exc:
+                    # Eine einzelne kaputte Mail (z. B. defekter/verweisender
+                    # Anhang) darf den restlichen Scan nicht abbrechen.
+                    notes.append(
+                        f"Mail konnte nicht verarbeitet werden ({exc}) — übersprungen, "
+                        f"restlicher Scan läuft weiter."
+                    )
                 if (notes or results) and len(log["mails"]) < 800:
                     log["mails"].append({
                         "received": f"{msg.received:%d.%m.%Y}",
@@ -263,14 +273,15 @@ def create_app(config: Config) -> Flask:
                 state.scan = {
                     "status": "done",
                     "messages": len(messages),
-                    "found": found,
-                    "auto": auto,
-                    "asked": asked,
+                    "found": counters["found"],
+                    "auto": counters["auto"],
+                    "asked": counters["asked"],
                 }
                 state.scan_log = log
         except Exception as exc:
             with state.lock:
                 state.scan = {"status": "error", "error": str(exc)}
+                state.scan_log = log
                 state.scan_log = log
 
     @app.post("/scan")

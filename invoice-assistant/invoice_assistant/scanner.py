@@ -25,7 +25,10 @@ BODY_KEYWORDS = (
     "billing", "payment", "zahlung", "gutschrift",
 )
 
-IMAGE_EXTS = (".jpg", ".jpeg", ".png")
+# .heic/.heif: das Standardformat, in dem iPhones Fotos speichern — wichtig,
+# damit ein mit dem Handy fotografierter Papierbeleg nicht stillschweigend
+# durchfällt, nur weil er kein .jpg/.png ist.
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".heic", ".heif")
 
 # ---------- Beleg-Mails: selbst eingescannte Papierbelege ----------
 # Konvention: Betreff beginnt mit "Beleg"/"Belege" (z. B. "Belege Juni",
@@ -33,8 +36,18 @@ IMAGE_EXTS = (".jpg", ".jpeg", ".png")
 # Zuordnung vorgelegt — ohne Absender-Regeln, denn der Absender bist du selbst.
 
 
+# Outlook hängt beim Antworten/Weiterleiten automatisch Präfixe an den
+# Betreff an (auch mehrfach, z. B. "AW: WG: Belege"). Damit eine Antwort auf
+# den letzten Monats-Thread ("AW: Belege Juni") weiterhin als Beleg-Mail
+# gilt, werden diese Präfixe vor der Prüfung entfernt.
+_REPLY_PREFIX_RE = re.compile(
+    r"^(?:(?:aw|wg|re|fw|fwd)\s*:\s*)+", re.IGNORECASE
+)
+
+
 def is_receipt_mail(message: Message) -> bool:
-    return message.subject.strip().lower().startswith(("beleg", "#beleg"))
+    subject = _REPLY_PREFIX_RE.sub("", message.subject.strip())
+    return subject.lower().startswith(("beleg", "#beleg"))
 
 
 _MONTH_BY_NAME = {name.lower(): i + 1 for i, name in enumerate(MONTH_NAMES)}
@@ -177,7 +190,12 @@ def collect_candidates(
             if att.size > MAX_ATTACHMENT_SIZE:
                 note(f"Beleg-Mail: Anhang „{att.name}“ übersprungen: größer als 15 MB")
                 continue
-            data = client.download_attachment(message, att)
+            try:
+                data = client.download_attachment(message, att)
+            except Exception as exc:
+                note(f"Anhang „{att.name}“ konnte nicht gelesen werden ({exc}) — übersprungen. "
+                     f"Möglich bei OneDrive-Verweis-Anhängen oder gesperrten Dateien.")
+                continue
             receipts = _receipt_candidates(att.name, att.content_type, data)
             if len(receipts) > 1:
                 note(f"Beleg-Mail: „{att.name}“ in {len(receipts)} Einzelbelege (pro Seite) zerlegt")
@@ -197,7 +215,12 @@ def collect_candidates(
             if att.size > MAX_ATTACHMENT_SIZE:
                 note(f"Anhang „{att.name}“ übersprungen: größer als 15 MB")
                 continue
-            data = client.download_attachment(message, att)
+            try:
+                data = client.download_attachment(message, att)
+            except Exception as exc:
+                note(f"Anhang „{att.name}“ konnte nicht gelesen werden ({exc}) — übersprungen. "
+                     f"Möglich bei OneDrive-Verweis-Anhängen oder gesperrten Dateien.")
+                continue
 
             if is_zip:
                 try:
@@ -222,7 +245,12 @@ def collect_candidates(
                      f"(kein Stichwort/Betrag/Rechnungsnr. im Inhalt)")
 
     if not candidates and looks_invoice_like(message):
-        body_cand = candidate_from_body(message.subject, client.get_body_text(message))
+        try:
+            body_text = client.get_body_text(message)
+        except Exception as exc:
+            note(f"Mailtext konnte nicht gelesen werden ({exc})")
+            return candidates
+        body_cand = candidate_from_body(message.subject, body_text)
         if body_cand:
             candidates.append(body_cand)
         elif not message.has_attachments:

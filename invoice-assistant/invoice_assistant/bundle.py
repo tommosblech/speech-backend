@@ -140,6 +140,18 @@ def generate_monthly_bundle(
                     img_pdf.cell(0, 8, _latin(label)[:100], new_x="LMARGIN", new_y="NEXT")
                     img_pdf.image(str(path), x=10, y=22, w=180)
                     writer.append(_as_reader(img_pdf))
+                elif path and path.exists() and path.suffix.lower() in (".heic", ".heif"):
+                    # HEIC-Fotos (iPhone-Standardformat) lassen sich ohne
+                    # zusätzliche Bildbibliothek nicht ins PDF einbetten;
+                    # der Beleg bleibt trotzdem erfasst/archiviert, nur der
+                    # Ausdruck verweist auf die Originaldatei.
+                    writer.append(_text_page(
+                        label,
+                        f"(Foto im HEIC-Format: {path.name}\n"
+                        "Lässt sich hier nicht automatisch einbetten — Original über\n"
+                        "„Rechnungen“ → Beleg-Spalte öffnen, oder am iPhone unter\n"
+                        "Einstellungen → Kamera → Formate auf „Kompatibel“ (JPEG) stellen.)",
+                    ))
                 elif path and path.exists():
                     writer.append(_text_page(label, path.read_text(encoding="utf-8", errors="replace")))
                 else:

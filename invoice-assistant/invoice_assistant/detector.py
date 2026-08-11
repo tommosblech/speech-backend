@@ -35,31 +35,44 @@ INVOICE_NO_RE = re.compile(
 # sonst wird auf US-Rechnungen der Betrag ohne Mehrwertsteuer erfasst.
 #
 # Prioritätsstufen: Der ZAHLBETRAG (z. B. "Rechnungsendbetrag" bei EnBW nach
-# Abzug der Abschläge) schlägt Gesamt-/Bruttobeträge, diese schlagen die
-# generischen Summenzeilen. Innerhalb einer Stufe gewinnt der höchste Wert
-# (Brutto >= Netto). Ohne die Stufen würde auf Jahresabrechnungen die große
-# Netto-/Brutto-Jahressumme statt des zu zahlenden Betrags erfasst.
+# Abzug der Abschläge, oder "€45.52 due" bei manchen Stripe-Rechnungen wie
+# Anthropic) schlägt Gesamt-/Bruttobeträge, diese schlagen die generischen
+# Summenzeilen. Innerhalb einer Stufe gewinnt der höchste Wert (Brutto >=
+# Netto). Ohne die Stufen würde auf Jahresabrechnungen die große Netto-/
+# Brutto-Jahressumme statt des zu zahlenden Betrags erfasst.
 _AMOUNT_GAP = r"[^\d€$£-]{0,25}(?:€|eur|usd|\$|£)?\s*"
 _AMOUNT_NUM = r"(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2})"
 AMOUNT_TIERS = [
-    re.compile(
-        r"(?:rechnungs-?endbetrag|zu zahlen(?:der betrag)?|zahlbetrag"
-        r"|noch zu zahlen|amount\s+due|verbleibende forderung)"
-        + _AMOUNT_GAP + _AMOUNT_NUM,
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:rechnungsbetrag|gesamtbetrag|endbetrag|brutto(?:betrag)?"
-        r"|grand\s+total|amount\s+paid|total\s+due)"
-        + _AMOUNT_GAP + _AMOUNT_NUM,
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:gesamt(?:summe)?|(?<!sub)(?<!zwischen)total"
-        r"|(?<!zwischen)(?<!zwischen-)summe)"
-        + _AMOUNT_GAP + _AMOUNT_NUM,
-        re.IGNORECASE,
-    ),
+    [
+        re.compile(
+            r"(?:rechnungs-?endbetrag|zu zahlen(?:der betrag)?|zahlbetrag"
+            r"|noch zu zahlen|amount\s+due|verbleibende forderung)"
+            + _AMOUNT_GAP + _AMOUNT_NUM,
+            re.IGNORECASE,
+        ),
+        # Manche Stripe-Rechnungen (z. B. Anthropic) schreiben den Betrag VOR
+        # dem Wort "due": "€45.52 due July 15, 2026" statt "Amount due $45.52".
+        re.compile(
+            r"(?:€|eur|usd|\$|£)\s*" + _AMOUNT_NUM + r"\s+due\b",
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        re.compile(
+            r"(?:rechnungsbetrag|gesamtbetrag|endbetrag|brutto(?:betrag)?"
+            r"|grand\s+total|amount\s+paid|total\s+due)"
+            + _AMOUNT_GAP + _AMOUNT_NUM,
+            re.IGNORECASE,
+        ),
+    ],
+    [
+        re.compile(
+            r"(?:gesamt(?:summe)?|(?<!sub)(?<!zwischen)total"
+            r"|(?<!zwischen)(?<!zwischen-)summe)"
+            + _AMOUNT_GAP + _AMOUNT_NUM,
+            re.IGNORECASE,
+        ),
+    ],
 ]
 ANY_AMOUNT_RE = re.compile(r"(?:€|eur|usd|\$|£)\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})", re.IGNORECASE)
 
@@ -137,11 +150,12 @@ def analyze_text(text: str, filename: str = "") -> tuple[int, dict]:
     # Erste Prioritätsstufe mit Treffern gewinnt; innerhalb der Stufe der
     # höchste Wert (Brutto >= Netto). Fallback: größter Betrag mit Währung.
     best: tuple[float, re.Match] | None = None
-    for tier in AMOUNT_TIERS:
-        for m in tier.finditer(text):
-            amount = _parse_amount(m.group(1))
-            if amount is not None and (best is None or amount > best[0]):
-                best = (amount, m)
+    for patterns in AMOUNT_TIERS:
+        for pattern in patterns:
+            for m in pattern.finditer(text):
+                amount = _parse_amount(m.group(1))
+                if amount is not None and (best is None or amount > best[0]):
+                    best = (amount, m)
         if best is not None:
             break
     if best is None:

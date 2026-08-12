@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import zipfile
 from pathlib import Path
 
@@ -43,14 +44,50 @@ def download_zip(timeout: tuple[int, int] = (8, 25)) -> bytes:
     return resp.content
 
 
+def _version_tuple(v: str | None) -> tuple[int, int, int, int]:
+    """Numerischer Vergleichsschlüssel für 'YYYY-MM-DD.N' — eine reine
+    Textsortierung würde z. B. '.9' fälschlich für neuer als '.10' halten."""
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})\.(\d+)", (v or "").strip())
+    if not m:
+        return (0, 0, 0, 0)
+    return tuple(int(x) for x in m.groups())  # type: ignore[return-value]
+
+
+def _zip_version(data: bytes) -> str | None:
+    """Liest die VERSION-Datei direkt aus den ZIP-Bytes, ohne zu entpacken."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            for name in zf.namelist():
+                if name.endswith("/invoice-assistant/VERSION"):
+                    return zf.read(name).decode("utf-8", errors="replace").strip()
+    except Exception:
+        pass
+    return None
+
+
 def find_downloads_zip() -> Path | None:
+    """Wählt unter allen passenden ZIPs im Downloads-Ordner die Datei mit der
+    HÖCHSTEN Versionsnummer — nicht einfach die zuletzt geänderte. Sonst
+    könnte eine alte, schon Monate zurückliegende ZIP (deren Dateisystem-
+    Zeitstempel z. B. durch einen Virenscan oder ein erneutes Speichern
+    aktuell wirkt) fälschlich für die neueste gehalten werden und die
+    Installation auf eine sehr alte Version zurückstufen."""
     downloads = Path(os.environ.get("IA_DOWNLOADS_DIR", str(Path.home() / "Downloads")))
     if not downloads.exists():
         return None
-    candidates = sorted(
-        downloads.glob(ZIP_GLOB), key=lambda p: p.stat().st_mtime, reverse=True
-    )
-    return candidates[0] if candidates else None
+    candidates = list(downloads.glob(ZIP_GLOB))
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    def key(p: Path) -> tuple:
+        try:
+            return _version_tuple(_zip_version(p.read_bytes()))
+        except OSError:
+            return (0, 0, 0, 0)
+
+    return max(candidates, key=key)
 
 
 def apply_zip(data: bytes) -> list[str]:
@@ -110,6 +147,20 @@ def self_update(on_progress=None) -> tuple[list[str], str]:
             )
         data = local.read_bytes()
         source = f"Downloads-Ordner ({local.name})"
+
+    # Sicherheitsnetz gegen genau den Fall, der hier einmal auftrat: eine
+    # veraltete ZIP (egal aus welcher Quelle) darf niemals eine neuere,
+    # bereits installierte Version zurückstufen.
+    installed = current_version()
+    found = _zip_version(data)
+    if found and _version_tuple(found) <= _version_tuple(installed):
+        raise RuntimeError(
+            f"Die gefundene Version ({found}) ist nicht neuer als die installierte "
+            f"({installed}) — vermutlich liegt eine veraltete ZIP im Downloads-Ordner. "
+            f"Bitte alte 'speech-backend-...zip'-Dateien dort löschen, eine frische "
+            f"Version von GitHub laden und erneut aktualisieren."
+        )
+
     progress("Installiere Dateien …")
     return apply_zip(data), source
 

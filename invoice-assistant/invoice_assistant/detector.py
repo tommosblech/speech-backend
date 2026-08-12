@@ -33,21 +33,25 @@ INVOICE_KEYWORDS = [
     "factura",
 ]
 
-# Manche PDF-Generatoren (z. B. Anthropics Rechnungsvorlage) fügen bei der
-# Textextraktion einen Zeilenumbruch/Leerzeichen mitten in der Nummer ein,
-# z. B. "NAPC5EIA\n-0007" statt "NAPC5EIA-0007". Ohne Toleranz dafür würde
-# nur "NAPC5EIA" erfasst — bei mehreren Rechnungen mit gleichem Präfix
-# (und z. B. gleichem monatlichen Abo-Betrag) führt das dazu, dass die
-# Duplikat-Erkennung zwei VERSCHIEDENE Rechnungen für dieselbe hält und
-# eine davon fälschlich verwirft. Die Erfassung überspringt daher optionalen
-# Leerraum um Trennzeichen (-/_.) herum; das Ergebnis wird danach von
-# eingebettetem Leerraum bereinigt.
+# Manche PDF-Generatoren (bestätigt bei Anthropics Rechnungsvorlage) fügen bei
+# der Textextraktion einen Zeilenumbruch/Leerzeichen mitten in der Nummer ein,
+# z. B. "NAPC5EIA\n-0007" statt "NAPC5EIA-0007". Schlimmer noch: der Bindestrich
+# selbst kann als "�" (U+FFFD, "Replacement Character") ankommen, wenn die PDF
+# einen Sonder-Bindestrich (z. B. Halbgeviertstrich) verwendet, den die
+# Textextraktion nicht decodieren konnte — betrifft dann JEDEN Bindestrich im
+# Dokument (auch in Adressen). Ohne Toleranz dafür würde nur "NAPC5EIA" erfasst
+# — bei mehreren Rechnungen mit gleichem Präfix (z. B. gleicher monatlicher
+# Abo-Betrag) führt das dazu, dass die Duplikat-Erkennung zwei VERSCHIEDENE
+# Rechnungen für dieselbe hält und eine davon fälschlich verwirft. Die
+# Erfassung überspringt daher optionalen Leerraum UND das Ersatzzeichen um
+# Trennzeichen (-/_.) herum; das Ergebnis wird danach bereinigt (Leerraum
+# entfernt, Ersatzzeichen/Sonder-Bindestriche zu "-" vereinheitlicht).
 INVOICE_NO_RE = re.compile(
     r"(?:rechnungs?-?\s*(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#)"
     r"|beleg-?\s*(?:nummer|nr\.?)|referenz-?\s*(?:nummer|nr\.?)"
     r"|bestell-?\s*(?:nummer|nr\.?)|order\s*(?:id|no\.?|number|#))"
     r"\s*[:#]?\s*"
-    r"([A-Za-z0-9]{1,20}(?:\s*[-/_.]\s*[A-Za-z0-9]{1,20}){0,6})",
+    r"([A-Za-z0-9]{1,20}(?:\s*[-/_.�‐-―]\s*[A-Za-z0-9]{1,20}){0,6})",
     re.IGNORECASE,
 )
 
@@ -179,7 +183,9 @@ def analyze_text(text: str, filename: str = "") -> tuple[int, dict]:
     m = INVOICE_NO_RE.search(text)
     if m:
         score += 1
-        fields["invoice_number"] = re.sub(r"\s+", "", m.group(1))
+        cleaned = re.sub(r"\s+", "", m.group(1))
+        cleaned = re.sub(r"[�‐-―]", "-", cleaned)  # Ersatzzeichen/Sonderstriche -> "-"
+        fields["invoice_number"] = cleaned
 
     # Erste Prioritätsstufe mit Treffern gewinnt; innerhalb der Stufe der
     # höchste Wert (Brutto >= Netto). Fallback: größter Betrag mit Währung.

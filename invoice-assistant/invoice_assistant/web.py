@@ -331,8 +331,13 @@ def create_app(config: Config) -> Flask:
     # ---------- Selbst-Aktualisierung ----------
 
     def update_worker() -> None:
+        def on_progress(text: str) -> None:
+            with state.lock:
+                if state.update.get("status") == "running":
+                    state.update["progress"] = text
+
         try:
-            files, source = updater.self_update()
+            files, source = updater.self_update(on_progress=on_progress)
             with state.lock:
                 state.update = {"status": "done", "files": len(files), "source": source}
             _schedule_restart()

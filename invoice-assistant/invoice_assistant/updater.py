@@ -31,7 +31,11 @@ def install_dir() -> Path:
     return Path(__file__).resolve().parent.parent  # der invoice-assistant-Ordner
 
 
-def download_zip(timeout: int = 120) -> bytes:
+def download_zip(timeout: tuple[int, int] = (8, 25)) -> bytes:
+    """timeout = (Verbindungsaufbau, Herunterladen) in Sekunden — bewusst kurz,
+    damit eine blockierte/langsame Verbindung (Firewall, Proxy) schnell auf
+    den Downloads-Ordner-Rückfallweg umschaltet, statt den Nutzer bis zu
+    zwei Minuten vor einer scheinbar hängenden Seite warten zu lassen."""
     resp = requests.get(ZIP_URL, timeout=timeout)
     resp.raise_for_status()
     if not resp.content.startswith(b"PK"):
@@ -80,12 +84,23 @@ def apply_zip(data: bytes) -> list[str]:
     return updated
 
 
-def self_update() -> tuple[list[str], str]:
-    """Erst Direkt-Download versuchen, sonst ZIP aus dem Downloads-Ordner nehmen."""
+def self_update(on_progress=None) -> tuple[list[str], str]:
+    """Erst Direkt-Download versuchen, sonst ZIP aus dem Downloads-Ordner nehmen.
+
+    on_progress(text) wird bei jedem Phasenwechsel aufgerufen, damit die
+    Oberfläche anzeigen kann, was gerade passiert, statt eine ganze Weile
+    eine unveränderte Meldung zu zeigen (wirkt sonst wie ein Absturz).
+    """
+    def progress(text: str) -> None:
+        if on_progress:
+            on_progress(text)
+
+    progress("Verbinde mit GitHub …")
     try:
         data = download_zip()
         source = "GitHub (direkter Download)"
     except Exception as download_error:
+        progress("Direkter Download nicht möglich — prüfe Downloads-Ordner …")
         local = find_downloads_zip()
         if not local:
             raise RuntimeError(
@@ -95,6 +110,7 @@ def self_update() -> tuple[list[str], str]:
             )
         data = local.read_bytes()
         source = f"Downloads-Ordner ({local.name})"
+    progress("Installiere Dateien …")
     return apply_zip(data), source
 
 

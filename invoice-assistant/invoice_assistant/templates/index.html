@@ -92,7 +92,10 @@
 <div class="card" id="update-card">
   <h2>Aktualisierung</h2>
   {% if update.status == 'running' %}
-    <p>⏳ Update wird heruntergeladen und installiert …</p>
+    <p>⏳ <span id="update-progress">{{ update.progress or 'Update wird heruntergeladen und installiert …' }}</span></p>
+    <p class="muted">Dauert es länger als eine Minute? Die Verbindung zu GitHub ist vermutlich langsam
+       oder blockiert (Firewall/Proxy) — der Assistent schaltet dann automatisch auf einen manuell in den
+       Downloads-Ordner gelegten ZIP-Download um (siehe Fehlermeldung, falls das ebenfalls nicht klappt).</p>
   {% elif update.status == 'done' %}
     <p class="ok">✔ Update installiert ({{ update.files }} Datei(en), Quelle: {{ update.source }}).
        Der Assistent startet jetzt automatisch neu — diese Seite verbindet sich gleich selbst wieder.</p>
@@ -172,6 +175,10 @@ if (updating) {
       const s = await r.json();
       if (s.update.status === 'idle') { clearInterval(timer); location.reload(); }
       if (s.update.status === 'error') { clearInterval(timer); location.reload(); }
+      if (s.update.status === 'running' && s.update.progress) {
+        const el = document.getElementById('update-progress');
+        if (el) el.textContent = s.update.progress;
+      }
     } catch (e) { /* Server startet gerade neu – weiter versuchen */ }
   }, 2000);
 } else if (initialAuth === 'pending' || initialAuth === 'working' || scanRunning) {

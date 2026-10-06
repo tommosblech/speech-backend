@@ -112,10 +112,17 @@ class LocalOutlookClient:
         except Exception:
             return f"Lokales Outlook ({ns.CurrentUser.Name})"
 
-    def _mail_folders(self, on_progress=None) -> list:
-        """Alle Mail-Ordner aller Konten/Datendateien, ohne Gesendet/Gelöscht/Spam usw."""
+    def _mail_folders(self, on_progress=None) -> list[tuple]:
+        """Alle Mail-Ordner aller Konten/Datendateien, ohne Gesendet/Gelöscht/Spam usw.
+        Liefert (Ordner, Anzeigepfad)-Paare - der Anzeigepfad wird GÜNSTIG aus den beim
+        Durchlaufen ohnehin gelesenen .Name-Werten zusammengesetzt. Outlooks eigene
+        .FolderPath-Eigenschaft ist dafür bewusst NICHT verwendet: sie ist in der
+        COM-Automatisierung bekannt dafür, pro Aufruf spürbar langsam zu sein (muss
+        intern die Eltern-Kette auflösen, bei IMAP-Konten besonders) - bei vielen
+        Ordnern über mehrere Konten hinweg kann allein das einen Scan um Minuten
+        verlangsamen, obwohl der eigentliche Mail-Zugriff längst schnell ist."""
         ns = self._namespace(on_progress=on_progress)
-        found: list = []
+        found: list[tuple] = []
 
         def report(name: str) -> None:
             if on_progress:
@@ -128,26 +135,27 @@ class LocalOutlookClient:
         roots = ns.Folders  # oberste Ebene = alle Konten und Datendateien
         report(f"{roots.Count} Konto(en)/Datendatei(en) gefunden, gehe durch …")
 
-        def walk(folder) -> None:
+        def walk(folder, path_prefix: str) -> None:
             try:
                 name = str(folder.Name or "")
+                path = f"{path_prefix} / {name}" if path_prefix else name
                 # Vor dem (potenziell langsamen/blockierenden) Zugriff auf
                 # .Folders melden - falls GENAU DORT etwas hängt (z. B. ein
                 # freigegebenes/Remote-Postfach mit Verbindungsproblemen),
                 # zeigt die zuletzt gemeldete Zeile, wo genau es steckenbleibt.
-                report(name)
+                report(path)
                 if name.lower() in SKIP_FOLDERS:
                     return
                 if getattr(folder, "DefaultItemType", OL_FOLDER_TYPE_MAIL) == OL_FOLDER_TYPE_MAIL:
-                    found.append(folder)
+                    found.append((folder, path))
                 subs = folder.Folders
                 for i in range(1, subs.Count + 1):
-                    walk(subs.Item(i))
+                    walk(subs.Item(i), path)
             except Exception:
                 pass  # nicht erreichbare Ordner (z. B. getrennte Archive) überspringen
 
         for i in range(1, roots.Count + 1):
-            walk(roots.Item(i))
+            walk(roots.Item(i), "")
         return found
 
     @staticmethod
@@ -246,8 +254,7 @@ class LocalOutlookClient:
         self.last_folder_stats.append(
             ("(Ordner ermitteln, alle Konten)", len(folders), time.perf_counter() - discover_start)
         )
-        for folder in folders:
-            folder_path = str(getattr(folder, "FolderPath", None) or folder.Name)
+        for folder, folder_path in folders:
             if on_progress:
                 try:
                     on_progress(f"Durchsuche: {folder_path} …")

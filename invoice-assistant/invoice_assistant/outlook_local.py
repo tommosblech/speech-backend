@@ -132,18 +132,23 @@ class LocalOutlookClient:
             found_here = 0
             try:
                 items = folder.Items
-                items.Sort("[ReceivedTime]", True)  # neueste zuerst
             except Exception:
                 self.last_folder_stats.append((folder_path + " (nicht lesbar)", 0))
                 continue
             for item in items:
                 if getattr(item, "Class", 0) != OL_MAIL_ITEM:
                     continue  # Termine, Zustellberichte usw. überspringen
-                received = _naive(item.ReceivedTime)
-                if received >= until:
-                    continue
-                if received < since:
-                    break  # absteigend sortiert: alles Weitere ist älter
+                try:
+                    received = _naive(item.ReceivedTime)
+                except Exception:
+                    continue  # kein gültiger Empfangszeitpunkt lesbar
+                if received >= until or received < since:
+                    continue  # ausserhalb des Zeitraums
+                # Kein Sortieren + Abbruch mehr: Outlooks Items.Sort() wird bei
+                # Iteration per "for" nicht zuverlässig eingehalten (bekannte
+                # COM-Eigenheit, v. a. bei grossen/IMAP-Ordnern) - ein verfrühter
+                # Abbruch hätte sonst den Rest des Ordners stillschweigend
+                # ausgelassen, ohne jede Spur im Protokoll.
                 subject = str(item.Subject or "")
                 if query and query.lower() not in subject.lower():
                     continue

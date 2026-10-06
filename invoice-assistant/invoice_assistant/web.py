@@ -189,7 +189,19 @@ def create_app(config: Config) -> Flask:
                 msg.id, cand.filename, msg.sender_email, eff,
                 cand.invoice_number, cand.amount,
             ):
-                results.append(f"„{cand.filename}“: bereits in Rechnungen erfasst, übersprungen")
+                # Zeigt zusätzlich, WORAN die Dublette erkannt wurde (gleiche
+                # Datei/Mail oder gleiche erkannte Rechnungsnummer+Betrag) und
+                # was dabei konkret extrahiert wurde — sonst lässt sich eine
+                # falsch positive Dublettenerkennung ohne gespeicherte Datei
+                # nicht diagnostizieren.
+                via_number = db._same_invoice_number(
+                    "invoices", msg.sender_email, cand.invoice_number, cand.amount
+                )
+                grund = "gleiche Rechnungsnr.+Betrag" if via_number else "gleiche Datei/Mail"
+                results.append(
+                    f"„{cand.filename}“: bereits in Rechnungen erfasst, übersprungen "
+                    f"(erkannt: Nr. {cand.invoice_number!r}, Betrag {cand.amount!r} — Grund: {grund})"
+                )
                 continue
             if db.pending_exists(
                 msg.id, cand.filename, msg.sender_email, eff,

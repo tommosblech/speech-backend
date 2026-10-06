@@ -120,9 +120,13 @@ class OutlookClient:
     # ---------- Mails ----------
 
     def search_messages(
-        self, since: datetime, until: datetime, query: str | None = None
+        self, since: datetime, until: datetime, query: str | None = None,
+        on_progress=None,
     ) -> list[Message]:
-        """Listet Mails im Zeitraum auf; optional zusätzlich per Volltextsuche."""
+        """Listet Mails im Zeitraum auf; optional zusätzlich per Volltextsuche.
+        on_progress: optionaler Callback fürs Live-Fortschritts-Update im Web-UI
+        (bei der Cloud-Quelle ungenutzt, nur für einheitliche Schnittstelle mit
+        dem lokalen Outlook-Client)."""
         messages: list[Message] = []
         select = "id,subject,sender,receivedDateTime,bodyPreview,hasAttachments"
         if query:

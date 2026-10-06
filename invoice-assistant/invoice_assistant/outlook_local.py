@@ -122,63 +122,109 @@ class LocalOutlookClient:
             walk(roots.Item(i))
         return found
 
+    @staticmethod
+    def _restrict_filter(since: datetime, until: datetime) -> str:
+        # Outlooks Restrict()-Filtersyntax erwartet Datumsliterale unabhängig
+        # von den Windows-Regionaleinstellungen IMMER im US-Format
+        # "m/d/yyyy h:mm AM/PM" - das deutsche Format würde hier stillschweigend
+        # falsch interpretiert oder abgelehnt.
+        fmt = "%m/%d/%Y %I:%M %p"
+        return f"[ReceivedTime] >= '{since.strftime(fmt)}' AND [ReceivedTime] < '{until.strftime(fmt)}'"
+
+    def _build_message(self, item, received: datetime) -> Message:
+        subject = str(item.Subject or "")
+        atts = getattr(item, "Attachments", None)
+        return Message(
+            id=str(item.EntryID),
+            subject=subject or "(kein Betreff)",
+            sender_name=str(getattr(item, "SenderName", "") or ""),
+            sender_email=_sender_address(item),
+            received=received,
+            body_preview="",
+            has_attachments=bool(atts and atts.Count > 0),
+        )
+
+    def _scan_restricted(
+        self, folder, since: datetime, until: datetime, query: str | None
+    ) -> list[Message]:
+        """Schneller Pfad: Outlook filtert den Zeitraum selbst (Index/Store-seitig)."""
+        items = folder.Items.Restrict(self._restrict_filter(since, until))
+        out: list[Message] = []
+        for item in items:
+            if getattr(item, "Class", 0) != OL_MAIL_ITEM:
+                continue  # Termine, Zustellberichte usw. überspringen
+            try:
+                received = _naive(item.ReceivedTime)
+            except Exception:
+                continue  # kein gültiger Empfangszeitpunkt lesbar
+            subject = str(item.Subject or "")
+            if query and query.lower() not in subject.lower():
+                continue
+            out.append(self._build_message(item, received))
+        return out
+
+    def _scan_manually(
+        self, folder, since: datetime, until: datetime, query: str | None
+    ) -> list[Message]:
+        """Fallback, falls Restrict() in einem Ordner nicht funktioniert (z. B.
+        bestimmte IMAP-Ordner): manuell durchgehen, mit grosszügigem Sicherheits-
+        abstand statt sofortigem Abbruch, da Items.Sort() bei "for"-Iteration
+        nicht in jedem Fall zuverlässig eingehalten wird (bekannte COM-
+        Eigenheit) - ein Abbruch beim ERSTEN zu alten Treffer hat deshalb schon
+        einmal den Rest eines Ordners stillschweigend ausgelassen."""
+        items = folder.Items
+        try:
+            items.Sort("[ReceivedTime]", True)  # neueste zuerst, nur Lauf-Beschleunigung
+        except Exception:
+            pass
+        STALE_LIMIT = 500
+        stale_streak = 0
+        out: list[Message] = []
+        for item in items:
+            if getattr(item, "Class", 0) != OL_MAIL_ITEM:
+                continue
+            try:
+                received = _naive(item.ReceivedTime)
+            except Exception:
+                continue
+            if received >= until:
+                continue  # noch nicht im Zeitraum (neuer als "bis")
+            if received < since:
+                stale_streak += 1
+                if stale_streak >= STALE_LIMIT:
+                    break  # seit STALE_LIMIT Mails am Stück zu alt - Rest mit hoher
+                           # Sicherheit auch, einzelne Ausreisser oben sind toleriert
+                continue
+            stale_streak = 0
+            subject = str(item.Subject or "")
+            if query and query.lower() not in subject.lower():
+                continue
+            out.append(self._build_message(item, received))
+        return out
+
     def search_messages(
-        self, since: datetime, until: datetime, query: str | None = None
+        self, since: datetime, until: datetime, query: str | None = None,
+        on_progress=None,
     ) -> list[Message]:
         result: list[Message] = []
         self.last_folder_stats: list[tuple[str, int]] = []
         for folder in self._mail_folders():
             folder_path = str(getattr(folder, "FolderPath", None) or folder.Name)
-            found_here = 0
-            try:
-                items = folder.Items
-                items.Sort("[ReceivedTime]", True)  # neueste zuerst (nur Lauf-Beschleunigung, s. u.)
-            except Exception:
-                self.last_folder_stats.append((folder_path + " (nicht lesbar)", 0))
-                continue
-            # Outlooks Items.Sort() wird bei Iteration per "for" nicht in jedem
-            # Fall zuverlässig eingehalten (bekannte COM-Eigenheit, v. a. bei
-            # grossen/IMAP-Ordnern) - ein Abbruch beim ERSTEN zu alten Treffer
-            # hat deshalb schon einmal den Rest eines Ordners stillschweigend
-            # ausgelassen. Darum erst nach vielen zu alten Treffern IN FOLGE
-            # abbrechen: toleriert einzelne Ausreisser in der Sortierung, hält
-            # den Scan aber trotzdem schnell (sonst müsste bei mehreren Jahre
-            # alten Postfächern wirklich jede einzelne Mail geprüft werden).
-            STALE_LIMIT = 500
-            stale_streak = 0
-            for item in items:
-                if getattr(item, "Class", 0) != OL_MAIL_ITEM:
-                    continue  # Termine, Zustellberichte usw. überspringen
+            if on_progress:
                 try:
-                    received = _naive(item.ReceivedTime)
+                    on_progress(folder_path)
                 except Exception:
-                    continue  # kein gültiger Empfangszeitpunkt lesbar
-                if received >= until:
-                    continue  # noch nicht im Zeitraum (neuer als "bis")
-                if received < since:
-                    stale_streak += 1
-                    if stale_streak >= STALE_LIMIT:
-                        break  # seit STALE_LIMIT Mails am Stück zu alt - Rest mit hoher
-                               # Sicherheit auch, einzelne Ausreisser oben sind toleriert
+                    pass  # Fortschrittsanzeige darf den Scan nie stoppen
+            try:
+                found = self._scan_restricted(folder, since, until, query)
+            except Exception:
+                try:
+                    found = self._scan_manually(folder, since, until, query)
+                except Exception:
+                    self.last_folder_stats.append((folder_path + " (nicht lesbar)", 0))
                     continue
-                stale_streak = 0
-                subject = str(item.Subject or "")
-                if query and query.lower() not in subject.lower():
-                    continue
-                atts = getattr(item, "Attachments", None)
-                found_here += 1
-                result.append(
-                    Message(
-                        id=str(item.EntryID),
-                        subject=subject or "(kein Betreff)",
-                        sender_name=str(getattr(item, "SenderName", "") or ""),
-                        sender_email=_sender_address(item),
-                        received=received,
-                        body_preview="",
-                        has_attachments=bool(atts and atts.Count > 0),
-                    )
-                )
-            self.last_folder_stats.append((folder_path, found_here))
+            result.extend(found)
+            self.last_folder_stats.append((folder_path, len(found)))
         result.sort(key=lambda m: m.received, reverse=True)
         return result
 

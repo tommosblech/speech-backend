@@ -264,11 +264,18 @@ def create_app(config: Config) -> Flask:
         try:
             with state.lock:
                 state.scan = {"status": "running", "progress": "Suche Mails im Postfach …"}
+            def report_folder(folder_path: str) -> None:
+                with state.lock:
+                    if state.scan.get("status") == "running":
+                        state.scan["progress"] = f"Durchsuche: {folder_path} …"
+
             # 10 Tage über das Ende hinaus suchen: Beleg-Mails mit eingescannten
             # Papierbelegen werden oft erst Anfang des Folgemonats verschickt,
             # gehören aber in den gescannten Monat. Normale Mails aus der
             # Verlängerung werden übersprungen.
-            messages = client.search_messages(since, until + timedelta(days=10), query=query)
+            messages = client.search_messages(
+                since, until + timedelta(days=10), query=query, on_progress=report_folder,
+            )
             log["folders"] = getattr(client, "last_folder_stats", None)
             counters = {"found": 0, "auto": 0, "asked": 0}
             for i, msg in enumerate(messages, 1):

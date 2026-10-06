@@ -191,7 +191,15 @@ def analyze_text(text: str, filename: str = "") -> tuple[int, dict]:
         score += 1
         cleaned = re.sub(r"\s+", "", m.group(1))
         cleaned = re.sub(r"[�‐-―]", "-", cleaned)  # Ersatzzeichen/Sonderstriche -> "-"
-        fields["invoice_number"] = cleaned
+        # Eine "Rechnungsnummer" ganz ohne Ziffer ist fast nie echt - meistens
+        # ein Fehlgriff durch verschobenen/mehrspaltigen PDF-Text, bei dem der
+        # Regex statt der Nummer ein Nachbarwort wie "Ihre" erwischt (reale
+        # Beobachtung bei IONITY-Rechnungen: "Ihre Rechnungsnummer ..."). So
+        # ein Wort taucht potenziell bei vielen verschiedenen Absendern/
+        # Rechnungen auf und würde sie alle fälschlich als "gleiche Nummer"
+        # zusammenwerfen - lieber keine Nummer als eine falsche.
+        if re.search(r"\d", cleaned):
+            fields["invoice_number"] = cleaned
 
     # Erste Prioritätsstufe mit Treffern gewinnt; innerhalb der Stufe der
     # höchste Wert (Brutto >= Netto). Fallback: größter Betrag mit Währung.
@@ -230,6 +238,25 @@ def analyze_text(text: str, filename: str = "") -> tuple[int, dict]:
     return score, fields
 
 
+# Viele Rechnungssysteme (bestätigt bei Anthropic) hängen die Rechnungsnummer
+# direkt an den Dateinamen an, z. B. "Invoice-NAPC5EIA-0017.pdf". Der
+# Dateiname kommt direkt vom Absender und ist NICHT von der fehleranfälligen
+# PDF-Textextraktion betroffen (kaputte Bindestriche, verschobene Spalten
+# usw.) - er ist bei vorhandenem Muster die zuverlässigere Quelle. Nur
+# Dateinamen mit einem Trennzeichen akzeptieren (schliesst generische
+# Namen wie "scan1.pdf" oder "dokument.pdf" aus).
+_FILENAME_LABEL_RE = re.compile(r"^(?:invoice|receipt|rechnung|beleg|quittung)[-_ ]*", re.IGNORECASE)
+_FILENAME_NUMBER_RE = re.compile(r"^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+){1,6}$")
+
+
+def _invoice_number_from_filename(filename: str) -> str | None:
+    stem = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", filename)  # Dateiendung weg
+    stem = _FILENAME_LABEL_RE.sub("", stem).strip("-_ ")
+    if len(stem) >= 6 and re.search(r"\d", stem) and _FILENAME_NUMBER_RE.match(stem):
+        return stem
+    return None
+
+
 def candidate_from_bytes(
     filename: str, content_type: str, data: bytes, source: str = "attachment"
 ) -> InvoiceCandidate | None:
@@ -251,6 +278,14 @@ def candidate_from_bytes(
 
     if score < 2:
         return None
+
+    # Aus dem Dateinamen abgeleitete Nummer bevorzugen, wenn sie länger/
+    # spezifischer ist als die aus dem PDF-Text extrahierte - deckt genau den
+    # Fall ab, dass die Textextraktion mitten in der Nummer etwas verliert
+    # (z. B. "NAPC5EIA" statt "NAPC5EIA-0017").
+    from_name = _invoice_number_from_filename(filename)
+    if from_name and len(from_name) > len(fields.get("invoice_number") or ""):
+        fields["invoice_number"] = from_name
 
     return InvoiceCandidate(
         source=source,

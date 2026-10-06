@@ -132,9 +132,20 @@ class LocalOutlookClient:
             found_here = 0
             try:
                 items = folder.Items
+                items.Sort("[ReceivedTime]", True)  # neueste zuerst (nur Lauf-Beschleunigung, s. u.)
             except Exception:
                 self.last_folder_stats.append((folder_path + " (nicht lesbar)", 0))
                 continue
+            # Outlooks Items.Sort() wird bei Iteration per "for" nicht in jedem
+            # Fall zuverlässig eingehalten (bekannte COM-Eigenheit, v. a. bei
+            # grossen/IMAP-Ordnern) - ein Abbruch beim ERSTEN zu alten Treffer
+            # hat deshalb schon einmal den Rest eines Ordners stillschweigend
+            # ausgelassen. Darum erst nach vielen zu alten Treffern IN FOLGE
+            # abbrechen: toleriert einzelne Ausreisser in der Sortierung, hält
+            # den Scan aber trotzdem schnell (sonst müsste bei mehreren Jahre
+            # alten Postfächern wirklich jede einzelne Mail geprüft werden).
+            STALE_LIMIT = 500
+            stale_streak = 0
             for item in items:
                 if getattr(item, "Class", 0) != OL_MAIL_ITEM:
                     continue  # Termine, Zustellberichte usw. überspringen
@@ -142,13 +153,15 @@ class LocalOutlookClient:
                     received = _naive(item.ReceivedTime)
                 except Exception:
                     continue  # kein gültiger Empfangszeitpunkt lesbar
-                if received >= until or received < since:
-                    continue  # ausserhalb des Zeitraums
-                # Kein Sortieren + Abbruch mehr: Outlooks Items.Sort() wird bei
-                # Iteration per "for" nicht zuverlässig eingehalten (bekannte
-                # COM-Eigenheit, v. a. bei grossen/IMAP-Ordnern) - ein verfrühter
-                # Abbruch hätte sonst den Rest des Ordners stillschweigend
-                # ausgelassen, ohne jede Spur im Protokoll.
+                if received >= until:
+                    continue  # noch nicht im Zeitraum (neuer als "bis")
+                if received < since:
+                    stale_streak += 1
+                    if stale_streak >= STALE_LIMIT:
+                        break  # seit STALE_LIMIT Mails am Stück zu alt - Rest mit hoher
+                               # Sicherheit auch, einzelne Ausreisser oben sind toleriert
+                    continue
+                stale_streak = 0
                 subject = str(item.Subject or "")
                 if query and query.lower() not in subject.lower():
                     continue

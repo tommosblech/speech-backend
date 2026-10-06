@@ -509,6 +509,28 @@ class Store:
             else:
                 kept_no[key] = row
 
+        # Dritter Durchgang: gleiche Mail + gleicher Betrag (z. B. Anthropic/
+        # Stripe hängen an EINE Zahlung sowohl eine "Invoice-..."- als auch
+        # eine "Receipt-..."-Datei mit identischem Betrag, aber jeweils
+        # eigener Nummer - das ist dieselbe Buchung, nicht zwei Rechnungen).
+        rows = self.db.execute(
+            """SELECT id, message_id, amount, currency, stored_path
+               FROM invoices
+               WHERE message_id IS NOT NULL AND amount IS NOT NULL
+               ORDER BY (stored_path IS NULL), id"""
+        ).fetchall()
+        kept_msg: dict[tuple, sqlite3.Row] = {}
+        for row in rows:
+            key = (row["message_id"], row["amount"], row["currency"])
+            if key in kept_msg:
+                keeper = kept_msg[key]
+                if row["stored_path"] and row["stored_path"] != keeper["stored_path"]:
+                    absolute_path(row["stored_path"]).unlink(missing_ok=True)
+                self.db.execute("DELETE FROM invoices WHERE id=?", (row["id"],))
+                removed += 1
+            else:
+                kept_msg[key] = row
+
         pending_rows = self.db.execute(
             """SELECT id, sender_email, received_at, filename, file_path
                FROM pending ORDER BY sender_email, received_at, filename, id"""

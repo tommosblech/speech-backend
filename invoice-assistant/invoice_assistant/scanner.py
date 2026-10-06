@@ -244,6 +244,30 @@ def collect_candidates(
                 note(f"Anhang „{att.name}“: keine Rechnungsmerkmale erkannt "
                      f"(kein Stichwort/Betrag/Rechnungsnr. im Inhalt)")
 
+        # Manche Absender (z. B. Anthropic/Stripe) hängen für EINE Zahlung
+        # zwei Belege an dieselbe Mail: eine "Invoice-..."- und eine
+        # "Receipt-..."-Datei mit identischem Betrag, aber unterschiedlicher
+        # eigener Nummer. Beide sind im eigentlichen Sinn dieselbe Buchung -
+        # ohne diese Prüfung würde sie doppelt gezählt (erkennbar z. B. an
+        # verzerrten Monatssummen). Innerhalb EINER Mail gilt daher: gleicher
+        # Betrag (+ gleiche Währung) = dieselbe Zahlung, nur die zuerst
+        # gefundene Datei behalten (das ist bei diesen Absendern praktisch
+        # immer die "Invoice"-Datei, da sie vor der "Receipt"-Datei im Anhang
+        # steht).
+        deduped: list[InvoiceCandidate] = []
+        seen_amounts: set[tuple[float, str]] = set()
+        for cand in candidates:
+            key = (cand.amount, cand.currency) if cand.amount is not None else None
+            if key is not None and key in seen_amounts:
+                note(f"„{cand.filename}“: gleicher Betrag wie ein anderer Anhang dieser Mail "
+                     f"({cand.amount} {cand.currency}) — vermutlich dieselbe Zahlung doppelt "
+                     f"angehängt (z. B. Invoice + Receipt), nur einmal übernommen")
+                continue
+            if key is not None:
+                seen_amounts.add(key)
+            deduped.append(cand)
+        candidates = deduped
+
     if not candidates and looks_invoice_like(message):
         try:
             body_text = client.get_body_text(message)

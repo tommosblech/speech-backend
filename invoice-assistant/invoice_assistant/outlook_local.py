@@ -99,15 +99,27 @@ class LocalOutlookClient:
         except Exception:
             return f"Lokales Outlook ({ns.CurrentUser.Name})"
 
-    def _mail_folders(self) -> list:
+    def _mail_folders(self, on_progress=None) -> list:
         """Alle Mail-Ordner aller Konten/Datendateien, ohne Gesendet/Gelöscht/Spam usw."""
         ns = self._namespace()
         found: list = []
 
+        def report(name: str) -> None:
+            if on_progress:
+                try:
+                    on_progress(f"Ermittle Ordner: {name} …")
+                except Exception:
+                    pass
+
         def walk(folder) -> None:
             try:
-                name = str(folder.Name or "").lower()
-                if name in SKIP_FOLDERS:
+                name = str(folder.Name or "")
+                # Vor dem (potenziell langsamen/blockierenden) Zugriff auf
+                # .Folders melden - falls GENAU DORT etwas hängt (z. B. ein
+                # freigegebenes/Remote-Postfach mit Verbindungsproblemen),
+                # zeigt die zuletzt gemeldete Zeile, wo genau es steckenbleibt.
+                report(name)
+                if name.lower() in SKIP_FOLDERS:
                     return
                 if getattr(folder, "DefaultItemType", OL_FOLDER_TYPE_MAIL) == OL_FOLDER_TYPE_MAIL:
                     found.append(folder)
@@ -208,11 +220,11 @@ class LocalOutlookClient:
     ) -> list[Message]:
         result: list[Message] = []
         self.last_folder_stats: list[tuple[str, int]] = []
-        for folder in self._mail_folders():
+        for folder in self._mail_folders(on_progress=on_progress):
             folder_path = str(getattr(folder, "FolderPath", None) or folder.Name)
             if on_progress:
                 try:
-                    on_progress(folder_path)
+                    on_progress(f"Durchsuche: {folder_path} …")
                 except Exception:
                     pass  # Fortschrittsanzeige darf den Scan nie stoppen
             try:

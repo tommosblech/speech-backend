@@ -234,25 +234,38 @@ class LocalOutlookClient:
         self, since: datetime, until: datetime, query: str | None = None,
         on_progress=None,
     ) -> list[Message]:
+        import time
+
         result: list[Message] = []
-        self.last_folder_stats: list[tuple[str, int]] = []
-        for folder in self._mail_folders(on_progress=on_progress):
+        # (Ordnerpfad, Anzahl Treffer, Dauer in Sekunden) - die Dauer zeigt im
+        # Scan-Protokoll, welcher Ordner einen langsamen Scan tatsächlich
+        # verursacht, statt das raten zu müssen.
+        self.last_folder_stats: list[tuple[str, int, float]] = []
+        discover_start = time.perf_counter()
+        folders = self._mail_folders(on_progress=on_progress)
+        self.last_folder_stats.append(
+            ("(Ordner ermitteln, alle Konten)", len(folders), time.perf_counter() - discover_start)
+        )
+        for folder in folders:
             folder_path = str(getattr(folder, "FolderPath", None) or folder.Name)
             if on_progress:
                 try:
                     on_progress(f"Durchsuche: {folder_path} …")
                 except Exception:
                     pass  # Fortschrittsanzeige darf den Scan nie stoppen
+            folder_start = time.perf_counter()
             try:
                 found = self._scan_restricted(folder, since, until, query)
             except Exception:
                 try:
                     found = self._scan_manually(folder, since, until, query)
                 except Exception:
-                    self.last_folder_stats.append((folder_path + " (nicht lesbar)", 0))
+                    self.last_folder_stats.append((folder_path + " (nicht lesbar)", 0, 0.0))
                     continue
             result.extend(found)
-            self.last_folder_stats.append((folder_path, len(found)))
+            self.last_folder_stats.append(
+                (folder_path, len(found), time.perf_counter() - folder_start)
+            )
         result.sort(key=lambda m: m.received, reverse=True)
         return result
 

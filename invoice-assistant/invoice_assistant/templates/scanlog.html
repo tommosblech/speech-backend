@@ -13,11 +13,16 @@
   <h2>Durchsuchte Ordner (Zeitraum {{ log.period }})</h2>
   {% if log.folders %}
   <p class="muted">Fehlt hier ein Konto oder Ordner komplett, ist es in deinem
-     Outlook-Profil nicht eingebunden — dann sag Bescheid.</p>
+     Outlook-Profil nicht eingebunden — dann sag Bescheid. Sortiert nach Dauer,
+     langsamster Ordner zuerst — so sieht man sofort, was einen langen Scan
+     verursacht.</p>
   <table>
-    <tr><th>Ordner</th><th class="num">Mails im Zeitraum</th></tr>
-    {% for name, count in log.folders %}
-    <tr><td>{{ name }}</td><td class="num">{{ count }}</td></tr>
+    <tr><th>Ordner</th><th class="num">Mails im Zeitraum</th><th class="num">Dauer</th></tr>
+    {% for name, count, seconds in log.folders %}
+    <tr {% if seconds >= 5 %}style="color:#b45309"{% endif %}>
+      <td>{{ name }}</td><td class="num">{{ count }}</td>
+      <td class="num">{{ '%.1f'|format(seconds) }}s</td>
+    </tr>
     {% endfor %}
   </table>
   {% else %}

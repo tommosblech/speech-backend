@@ -279,7 +279,13 @@ def create_app(config: Config) -> Flask:
             messages = client.search_messages(
                 since, until + timedelta(days=10), query=query, on_progress=report_folder,
             )
-            log["folders"] = getattr(client, "last_folder_stats", None)
+            folder_stats = getattr(client, "last_folder_stats", None)
+            if folder_stats:
+                # Langsamsten Ordner zuerst zeigen - sofort sichtbar, was einen
+                # langen Scan tatsächlich verursacht, ohne die Tabelle durchsuchen
+                # zu müssen.
+                folder_stats = sorted(folder_stats, key=lambda row: row[2], reverse=True)
+            log["folders"] = folder_stats
             counters = {"found": 0, "auto": 0, "asked": 0}
             for i, msg in enumerate(messages, 1):
                 received_naive = msg.received.replace(tzinfo=None)

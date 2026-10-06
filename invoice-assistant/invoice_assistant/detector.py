@@ -39,19 +39,25 @@ INVOICE_KEYWORDS = [
 # selbst kann als "�" (U+FFFD, "Replacement Character") ankommen, wenn die PDF
 # einen Sonder-Bindestrich (z. B. Halbgeviertstrich) verwendet, den die
 # Textextraktion nicht decodieren konnte — betrifft dann JEDEN Bindestrich im
-# Dokument (auch in Adressen). Ohne Toleranz dafür würde nur "NAPC5EIA" erfasst
-# — bei mehreren Rechnungen mit gleichem Präfix (z. B. gleicher monatlicher
+# Dokument (auch in Adressen). UND ES GEHT NOCH SCHLIMMER: manchmal wird der
+# Bindestrich beim Extrahieren komplett verschluckt (nicht mal als "�"), es
+# bleibt nur noch der Zeilenumbruch/das Leerzeichen übrig, z. B.
+# "NAPC5EIA\n0017". Ohne Toleranz dafür würde nur "NAPC5EIA" erfasst — bei
+# mehreren Rechnungen mit gleichem Präfix (z. B. gleicher monatlicher
 # Abo-Betrag) führt das dazu, dass die Duplikat-Erkennung zwei VERSCHIEDENE
-# Rechnungen für dieselbe hält und eine davon fälschlich verwirft. Die
-# Erfassung überspringt daher optionalen Leerraum UND das Ersatzzeichen um
-# Trennzeichen (-/_.) herum; das Ergebnis wird danach bereinigt (Leerraum
-# entfernt, Ersatzzeichen/Sonder-Bindestriche zu "-" vereinheitlicht).
+# Rechnungen für dieselbe hält und eine davon fälschlich als "bereits erfasst"
+# überspringt. Die Erfassung überspringt daher optionalen Leerraum UND das
+# Ersatzzeichen um Trennzeichen (-/_.) herum — UND lässt als Rückfalloption
+# auch einen rein auf Leerraum folgenden Ziffernblock (z. B. die "0017")
+# ganz ohne sichtbares Trennzeichen zu, da dieser Fall real beobachtet wurde.
+# Das Ergebnis wird danach bereinigt (Leerraum entfernt, Ersatzzeichen/
+# Sonder-Bindestriche zu "-" vereinheitlicht).
 INVOICE_NO_RE = re.compile(
     r"(?:rechnungs?-?\s*(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#)"
     r"|beleg-?\s*(?:nummer|nr\.?)|referenz-?\s*(?:nummer|nr\.?)"
     r"|bestell-?\s*(?:nummer|nr\.?)|order\s*(?:id|no\.?|number|#))"
     r"\s*[:#]?\s*"
-    r"([A-Za-z0-9]{1,20}(?:\s*[-/_.�‐-―]\s*[A-Za-z0-9]{1,20}){0,6})",
+    r"([A-Za-z0-9]{1,20}(?:\s*[-/_.�‐-―]\s*[A-Za-z0-9]{1,20}|\s+\d{1,8}){0,6})",
     re.IGNORECASE,
 )
 

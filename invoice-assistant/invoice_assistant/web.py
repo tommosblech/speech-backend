@@ -264,10 +264,13 @@ def create_app(config: Config) -> Flask:
         try:
             with state.lock:
                 state.scan = {"status": "running", "progress": "Suche Mails im Postfach …"}
-            def report_folder(folder_path: str) -> None:
+            def report_folder(text: str) -> None:
+                # outlook_local.py liefert hier bereits fertig formatierte
+                # Fortschrittstexte (Verbindungsaufbau, Ordner-Ermittlung,
+                # einzelne Ordner) - 1:1 übernehmen statt erneut einzupacken.
                 with state.lock:
                     if state.scan.get("status") == "running":
-                        state.scan["progress"] = f"Durchsuche: {folder_path} …"
+                        state.scan["progress"] = text
 
             # 10 Tage über das Ende hinaus suchen: Beleg-Mails mit eingescannten
             # Papierbelegen werden oft erst Anfang des Folgemonats verschickt,

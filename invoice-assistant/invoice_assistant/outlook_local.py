@@ -60,9 +60,21 @@ class LocalOutlookClient:
         self.config = config
         self._tl = threading.local()  # COM-Objekte sind an ihren Thread gebunden
 
-    def _namespace(self):
+    def _namespace(self, on_progress=None):
         ns = getattr(self._tl, "ns", None)
         if ns is None:
+            # Beim ALLERERSTEN COM-Zugriff in diesem Thread (jeder Scan läuft in
+            # einem eigenen Hintergrund-Thread, COM-Objekte sind an ihren Thread
+            # gebunden) kann das Verbinden zu Outlook selbst hängen bleiben -
+            # darum hier schon feingranular melden, nicht erst beim Ordner-Scan.
+            def report(text: str) -> None:
+                if on_progress:
+                    try:
+                        on_progress(text)
+                    except Exception:
+                        pass
+
+            report("Verbinde mit Outlook …")
             try:
                 import pythoncom
                 import win32com.client
@@ -74,6 +86,7 @@ class LocalOutlookClient:
                 ) from exc
             pythoncom.CoInitialize()
             app = win32com.client.Dispatch("Outlook.Application")
+            report("Mit Outlook verbunden, öffne Postfach …")
             ns = app.GetNamespace("MAPI")
             self._tl.ns = ns
         return ns
@@ -101,7 +114,7 @@ class LocalOutlookClient:
 
     def _mail_folders(self, on_progress=None) -> list:
         """Alle Mail-Ordner aller Konten/Datendateien, ohne Gesendet/Gelöscht/Spam usw."""
-        ns = self._namespace()
+        ns = self._namespace(on_progress=on_progress)
         found: list = []
 
         def report(name: str) -> None:
@@ -110,6 +123,10 @@ class LocalOutlookClient:
                     on_progress(f"Ermittle Ordner: {name} …")
                 except Exception:
                     pass
+
+        report("(Postfach verbunden) ermittle Konten …")
+        roots = ns.Folders  # oberste Ebene = alle Konten und Datendateien
+        report(f"{roots.Count} Konto(en)/Datendatei(en) gefunden, gehe durch …")
 
         def walk(folder) -> None:
             try:
@@ -129,7 +146,6 @@ class LocalOutlookClient:
             except Exception:
                 pass  # nicht erreichbare Ordner (z. B. getrennte Archive) überspringen
 
-        roots = ns.Folders  # oberste Ebene = alle Konten und Datendateien
         for i in range(1, roots.Count + 1):
             walk(roots.Item(i))
         return found
